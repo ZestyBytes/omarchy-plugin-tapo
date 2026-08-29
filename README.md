@@ -68,7 +68,13 @@ Everything happens from the bar — no config file editing required:
      app: open the camera → gear icon → Advanced Settings → Camera Account.
      This is a separate login from your TP-Link cloud account, created
      specifically for local RTSP/ONVIF access.
-   - **Stream** — `stream1` (HD) or `stream2` (SD, lower bandwidth)
+   - **Stream** — `stream1` (HD) or `stream2` (SD, lower bandwidth); this is
+     what opens full-size in `mpv` when you click a preview
+   - **Preview** — the (usually lower-res) stream decoded for the live
+     thumbnail grid, defaulting to `stream2`. Keeping this separate from
+     **Stream** means several tiled previews don't mean several HD feeds
+     being decoded at once — set both to `stream1` if you want full quality
+     in the grid and have the bandwidth/CPU to spare
 4. Click **Test** to confirm it connects.
 5. Click the back arrow — your camera now shows a live preview in the panel.
 
@@ -102,13 +108,14 @@ the whole widget to reload on every save.
 2+ cameras tile into a grid (1 camera fills the width); drag a settings
 row's grip handle to reorder the list.
 
-**Pan/tilt** — hover a live preview to reveal directional arrows (only for
-cameras with the "Pan/tilt" checkbox enabled in their settings, on by
-default). Hold a direction to move, release to stop — this uses ONVIF
-`ContinuousMove`/`Stop` over the camera's local ONVIF port (2020), with the
-same camera-account credentials as RTSP. Cameras without a physical
-pan/tilt mount will just ignore the commands harmlessly; untick the
-checkbox to hide the arrows for those.
+**Pan/tilt** — `onvif-ptz.sh` (ONVIF `ContinuousMove`/`Stop` over the
+camera's local ONVIF port 2020, same camera-account credentials as RTSP) is
+in place and works against real hardware, but isn't currently wired into
+any UI: an earlier hover-arrows overlay on the grid preview sat on top of
+the live `VideoOutput` and made the already-bandwidth-constrained preview
+flicker, so it was pulled. A future overlay tied to the tiled `mpv` window
+(the "Stream" preview, not the grid thumbnail) is the plan — see the
+roadmap below. The "Pan/tilt" checkbox in settings is kept for that.
 
 **Delete confirmation** — the trash icon in settings needs two clicks: the
 first arms it ("Confirm?", with a few seconds to change your mind), the
@@ -122,6 +129,9 @@ simply always unreachable, and never on the first check of a session.
 
 ## Roadmap / ideas
 
+- Pan/tilt controls for the tiled `mpv` stream view — a floating overlay
+  window tracking the mpv window's position/size (via `hyprctl`), shown on
+  hover, calling the already-working `onvif-ptz.sh`
 - ONVIF discovery to help find cameras' IPs automatically
 - Motion-detection notifications — investigated for this release; Tapo's
   ONVIF event (pull-point) service proved too unreliable on real hardware

@@ -6,6 +6,7 @@
     "password": "campass",
     "port": 554,
     "stream": "stream1",
+    "previewStream": "stream2",
     "hidden": false,
     "ptz": true
   },
@@ -16,6 +17,7 @@
     "password": "campass",
     "port": 554,
     "stream": "stream1",
+    "previewStream": "stream2",
     "hidden": false,
     "ptz": false
   }

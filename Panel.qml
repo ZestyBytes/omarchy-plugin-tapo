@@ -548,7 +548,7 @@ Panel {
 
                   MediaPlayer {
                     id: player
-                    source: modelData.url
+                    source: modelData.previewUrl
                     autoPlay: true
                     loops: MediaPlayer.Infinite
                     videoOutput: videoOutput
@@ -587,55 +587,13 @@ Panel {
                 onClicked: root.openStream(modelData)
               }
 
-              // Pan/tilt overlay: only shown on hover, so it doesn't
-              // clutter a normal glance at the grid. Held down (not a
-              // single click) since ONVIF ContinuousMove needs an explicit
-              // Stop or the camera just keeps panning.
-              Item {
-                visible: modelData.ptz !== false && previewMouse.containsMouse
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.margins: Style.space(6)
-                width: Style.space(72)
-                height: Style.space(72)
-
-                Repeater {
-                  model: [
-                    { dir: "up",    glyph: "", x: 1, y: 0 },
-                    { dir: "down",  glyph: "", x: 1, y: 2 },
-                    { dir: "left",  glyph: "", x: 0, y: 1 },
-                    { dir: "right", glyph: "", x: 2, y: 1 }
-                  ]
-
-                  delegate: Rectangle {
-                    required property var modelData
-                    x: modelData.x * Style.space(24)
-                    y: modelData.y * Style.space(24)
-                    width: Style.space(24)
-                    height: Style.space(24)
-                    radius: Style.space(12)
-                    color: ptzMouse.pressed ? Qt.darker(root.barForeground, 4)
-                      : ptzMouse.containsMouse ? Qt.darker(root.barForeground, 7) : "#66000000"
-
-                    Text {
-                      anchors.centerIn: parent
-                      text: modelData.glyph
-                      color: "#ffffff"
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                    }
-
-                    MouseArea {
-                      id: ptzMouse
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      onPressed: root.ptzMove(cameraDelegate.camera, modelData.dir)
-                      onReleased: root.ptzStop(cameraDelegate.camera)
-                      onCanceled: root.ptzStop(cameraDelegate.camera)
-                    }
-                  }
-                }
-              }
+              // Pan/tilt used to have a hover-revealed arrow overlay right
+              // here, but sitting on top of the live VideoOutput made the
+              // already-decoding preview flicker, and PTZ on a thumbnail
+              // you're not actually watching full-size isn't that useful
+              // anyway. Dropped for now -- root.ptzMove/ptzStop are still
+              // there for a future overlay tied to the tiled mpv window
+              // instead (see openStream()).
             }
           }
         }
@@ -975,6 +933,22 @@ Panel {
                       text: settingsRow.modelData.stream
                       placeholderText: "stream1"
                       onTextChanged: { root.cameras[settingsRow.index].stream = text; root.scheduleSave() }
+                    }
+
+                    Text {
+                      text: "Preview"
+                      color: Qt.darker(root.barForeground, 1.4)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    TextField {
+                      implicitWidth: Style.space(90)
+                      text: settingsRow.modelData.previewStream
+                      placeholderText: "stream2"
+                      ToolTip.visible: hovered
+                      ToolTip.text: "Lower-res stream decoded for the live thumbnail grid. Full quality still opens when you click a preview."
+                      onTextChanged: { root.cameras[settingsRow.index].previewStream = text; root.scheduleSave() }
                     }
 
                     Item { Layout.fillWidth: true }
