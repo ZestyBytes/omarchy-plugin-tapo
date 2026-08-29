@@ -259,13 +259,29 @@ Panel {
         Layout.fillWidth: true
       }
 
-      PanelActionButton {
+      Rectangle {
         visible: !root.settingsMode && root.cameras.length === 0
-        iconText: " + Add your first camera"
-        bordered: true
-        foreground: root.barForeground
-        implicitWidth: Style.space(220)
-        onClicked: root.addCamera()
+        Layout.fillWidth: true
+        implicitHeight: Style.space(34)
+        radius: Style.space(6)
+        color: addFirstMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+        border.color: root.barForeground
+        border.width: Style.space(1)
+
+        Text {
+          anchors.centerIn: parent
+          text: "+ Add your first camera"
+          color: root.barForeground
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+        }
+
+        MouseArea {
+          id: addFirstMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          onClicked: root.addCamera()
+        }
       }
 
       Flickable {
@@ -410,8 +426,13 @@ Panel {
               required property var modelData
               required property int index
               Layout.fillWidth: true
-              implicitHeight: headerRow.implicitHeight + Style.space(16) +
-                (expanded ? bodyColumn.implicitHeight + Style.space(8) : 0)
+              // Fixed, not derived from headerRow/bodyColumn.implicitHeight:
+              // those settle over a couple of layout passes, but the popup
+              // window snapshots its size once when it opens and does not
+              // grow afterward, so a reactive height here left the window
+              // too short until something else forced a relayout. Known
+              // constants are correct on the very first pass instead.
+              implicitHeight: Style.space(48) + (expanded ? Style.space(210) : 0)
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
 
@@ -419,6 +440,13 @@ Panel {
               // nothing to show collapsed; existing cameras start collapsed
               // so a multi-camera list reads as a clean name list first.
               property bool expanded: CameraModel.isBlank(modelData)
+
+              // Mirrors modelData.name so the collapsed header updates as
+              // you type. modelData itself is a snapshot taken when this
+              // delegate was created, not a live reference — mutating
+              // root.cameras[index] (see the Name field below) doesn't
+              // change what modelData reports back.
+              property string currentName: modelData.name
 
               property string testState: "idle" // idle | testing | ok | fail
               property string testMessage: ""
@@ -480,7 +508,7 @@ Panel {
 
                       Text {
                         Layout.fillWidth: true
-                        text: settingsRow.modelData.name || "(unnamed camera)"
+                        text: settingsRow.currentName || "(unnamed camera)"
                         color: root.barForeground
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
@@ -555,7 +583,11 @@ Panel {
                     Layout.fillWidth: true
                     text: settingsRow.modelData.name
                     placeholderText: "Name (e.g. Front Door)"
-                    onTextChanged: { root.cameras[settingsRow.index].name = text; root.scheduleSave() }
+                    onTextChanged: {
+                      root.cameras[settingsRow.index].name = text
+                      settingsRow.currentName = text
+                      root.scheduleSave()
+                    }
                   }
 
                   RowLayout {
@@ -646,12 +678,28 @@ Panel {
             }
           }
 
-          PanelActionButton {
-            iconText: " + Add camera"
-            bordered: true
-            foreground: root.barForeground
-            implicitWidth: Style.space(140)
-            onClicked: root.addCamera()
+          Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: Style.space(34)
+            radius: Style.space(6)
+            color: addMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+            border.color: root.barForeground
+            border.width: Style.space(1)
+
+            Text {
+              anchors.centerIn: parent
+              text: "+ Add camera"
+              color: root.barForeground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+            }
+
+            MouseArea {
+              id: addMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              onClicked: root.addCamera()
+            }
           }
         }
       }
