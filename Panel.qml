@@ -405,6 +405,12 @@ Panel {
           delegate: ColumnLayout {
             id: cameraDelegate
             Layout.fillWidth: true
+            // Without this, GridLayout can size a column from its cell's
+            // own content width — here, the short "Preview unavailable"
+            // text on an unconfigured camera — instead of splitting the
+            // available width evenly between columns like fillWidth alone
+            // implies.
+            Layout.preferredWidth: 0
             spacing: Style.space(4)
             // Fixed, not derived from the name/ip row's text-metrics-based
             // implicitHeight: that needs a layout pass to settle, but the
