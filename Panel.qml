@@ -206,7 +206,7 @@ Panel {
     // populated camera/settings list doesn't carry padding meant for those.
     // Both lists still sit in a Flickable as a safety net against
     // undershooting.
-    contentHeight: Math.min(Style.space(480),
+    contentHeight: Math.min(Style.space(780),
       Style.space(70) +
       (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
       (!root.settingsMode && root.visibleCameras.length === 0 ? Style.space(56) : 0) +
