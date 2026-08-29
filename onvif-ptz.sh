@@ -4,8 +4,16 @@
 # directly since that's all the camera's tiny embedded ONVIF service needs.
 #
 # Usage:
-#   onvif-ptz.sh move <host> <user> <password> <up|down|left|right>
-#   onvif-ptz.sh stop <host> <user> <password>
+#   ONVIF_PASSWORD=<password> onvif-ptz.sh move <host> <user> <up|down|left|right>
+#   ONVIF_PASSWORD=<password> onvif-ptz.sh stop <host> <user>
+#
+# The password comes from the ONVIF_PASSWORD environment variable rather
+# than an argument: command-line arguments end up in /proc/<pid>/cmdline,
+# which is world-readable, so a positional password argument would leak the
+# camera's credentials to every other local process once a minute (this
+# script is fired on every PTZ arrow press/release, and used to take the
+# password as $4). The environment is still per-process, but only readable
+# by the same user (or root), which /proc/<pid>/cmdline is not.
 #
 # Talks to http://<host>:2020/onvif/service (the standard Tapo ONVIF port),
 # profile "profile_1" (the only profile Tapo cameras expose).
@@ -14,7 +22,7 @@ set -euo pipefail
 cmd="${1:?command required}"
 host="${2:?host required}"
 user="${3:?user required}"
-pass="${4:?password required}"
+pass="${ONVIF_PASSWORD:?ONVIF_PASSWORD env var required}"
 url="http://${host}:2020/onvif/service"
 
 # WS-Security PasswordDigest = Base64(SHA1(nonce_bytes || created || password)).
@@ -53,7 +61,7 @@ ${body}
 
 case "$cmd" in
   move)
-    direction="${5:?direction required (up|down|left|right)}"
+    direction="${4:?direction required (up|down|left|right)}"
     # Full velocity: smaller magnitudes were unreliable in testing — the
     # camera needs a strong-enough signal to actually move at all.
     case "$direction" in

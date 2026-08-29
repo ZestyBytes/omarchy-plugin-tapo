@@ -12,12 +12,18 @@
 -- by not being a separate window at all.
 --
 -- Enabled per-launch (see Panel.qml's openStream()) via:
---   mpv --script=onvif-ptz-osc.lua
+--   ONVIF_PASSWORD=<p> mpv --script=onvif-ptz-osc.lua
 --       --script-opts=onvifptz-script=<path to onvif-ptz.sh>,
---                      onvifptz-host=<ip>,onvifptz-user=<u>,onvifptz-pass=<p>
+--                      onvifptz-host=<ip>,onvifptz-user=<u>
 -- Only passed when the camera's "Pan/tilt" setting is on. If host/script
 -- aren't set (script loaded standalone, or ptz off), the overlay just
 -- doesn't activate.
+--
+-- The password is read from mpv's own environment (ONVIF_PASSWORD), not a
+-- script-opt: script-opts end up in mpv's own /proc/<pid>/cmdline, which is
+-- world-readable, for as long as the stream window stays open. The
+-- environment is still per-process, but only readable by the same user (or
+-- root).
 
 local mp = require 'mp'
 local msg = require 'mp.msg'
@@ -26,9 +32,9 @@ local opts = {
   script = "",
   host = "",
   user = "",
-  pass = "",
 }
 require('mp.options').read_options(opts, "onvifptz")
+local pass = os.getenv("ONVIF_PASSWORD") or ""
 
 if opts.script == "" or opts.host == "" then
   msg.verbose("onvif-ptz-osc: no host/script configured, overlay disabled")
@@ -108,21 +114,25 @@ local function dir_at(x, y)
   return nil
 end
 
+-- The password travels as a subprocess environment variable (env), never
+-- as one of args -- args end up in onvif-ptz.sh's own /proc/<pid>/cmdline,
+-- which is world-readable; env is not.
 local function run_async(args)
-  mp.command_native_async({ name = "subprocess", args = args, playback_only = false }, function() end)
+  mp.command_native_async({ name = "subprocess", args = args, playback_only = false,
+    env = { "ONVIF_PASSWORD=" .. pass } }, function() end)
 end
 
 local function stop_ptz()
   if not pressed_dir then return end
   pressed_dir = nil
   redraw()
-  run_async({ "bash", opts.script, "stop", opts.host, opts.user, opts.pass })
+  run_async({ "bash", opts.script, "stop", opts.host, opts.user })
 end
 
 local function start_ptz(dir)
   pressed_dir = dir
   redraw()
-  run_async({ "bash", opts.script, "move", opts.host, opts.user, opts.pass, dir })
+  run_async({ "bash", opts.script, "move", opts.host, opts.user, dir })
 end
 
 -- Forced, not a plain binding, since it needs first look at every left

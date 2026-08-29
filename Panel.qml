@@ -47,6 +47,44 @@ Panel {
   readonly property string thumbnailDir: Quickshell.env("HOME") + "/.cache/omarchy/tapo-cameras/thumbnails"
   function thumbnailPath(camera) { return root.thumbnailDir + "/" + CameraModel.cacheId(camera) + ".jpg" }
 
+  // Every camera's RTSP URL embeds its username/password. ffprobe/ffmpeg/mpv
+  // have no separate flag for RTSP credentials — the URL itself has to be
+  // one of their own arguments, which would otherwise sit in plain sight in
+  // /proc/<pid>/cmdline (world-readable) for as long as that process runs.
+  // Writing the URL to a small file here instead (via FileView, which
+  // writes it with 0600 permissions, same as cameras.json) and pointing the
+  // process at *that* file — ffmpeg's `-f concat` demuxer, or mpv's
+  // `--playlist` — keeps the credential out of every one of those
+  // processes' own argv. Each file is named after the camera + purpose so
+  // concurrent operations on different cameras (or different streams of the
+  // same camera) never clobber each other.
+  readonly property string streamTmpDir: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/tmp"
+  function streamTmpPath(camera, purpose) {
+    return root.streamTmpDir + "/" + CameraModel.cacheId(camera) + "-" + purpose
+  }
+  // ffmpeg's concat demuxer expects `file '<url>'` lines; single quotes in
+  // the URL (in practice only possible via an oddly-typed ip/stream field —
+  // username/password are already percent-encoded by CameraModel.rtspUrl)
+  // are escaped the same way a shell would.
+  function writeConcatFile(path, url) {
+    tmpWriterFile.path = path
+    tmpWriterFile.setText("file '" + url.replace(/'/g, "'\\''") + "'\n")
+    tmpWriterFile.waitForJob()
+  }
+  // mpv's --playlist wants a plain URL per line, not ffmpeg's concat syntax.
+  function writePlaylistFile(path, url) {
+    tmpWriterFile.path = path
+    tmpWriterFile.setText(url + "\n")
+    tmpWriterFile.waitForJob()
+  }
+
+  FileView {
+    id: tmpWriterFile
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+  }
+
   visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -166,6 +204,7 @@ Panel {
     tileRuleProc.running = true
     migrateProc.running = true
     mkdirThumbnailDirProc.running = true
+    mkdirStreamTmpDirProc.running = true
     checkMpvProc.running = true
     checkFfprobeProc.running = true
   }
@@ -201,8 +240,18 @@ Panel {
     if (offlineCheckProc.running || root.offlineCheckQueue.length === 0) return
     offlineCheckProc.currentCamera = root.offlineCheckQueue.shift()
     offlineCheckProc.capturedOut = ""
-    offlineCheckProc.command = ["timeout", "8", "ffprobe", "-rtsp_transport", "tcp", "-v", "error",
-      "-show_entries", "stream=codec_name", "-of", "csv=p=0", CameraModel.rtspUrl(offlineCheckProc.currentCamera)]
+    var probePath = root.streamTmpPath(offlineCheckProc.currentCamera, "probe.concat")
+    root.writeConcatFile(probePath, CameraModel.rtspUrl(offlineCheckProc.currentCamera))
+    // No -rtsp_transport here: it errored outright on ffmpeg (and was
+    // silently ignored by ffprobe) once the RTSP URL was behind a concat
+    // demuxer instead of ffprobe's own direct argument -- verified end to
+    // end against real hardware. "rtp" has to be in the whitelist too: RTSP
+    // over TCP still uses the rtp pseudo-protocol internally for the media
+    // stream itself, which concat's whitelist blocks without it.
+    offlineCheckProc.command = ["timeout", "8", "ffprobe",
+      "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
+      "-v", "error",
+      "-show_entries", "stream=codec_name", "-of", "csv=p=0", probePath]
     offlineCheckProc.running = true
   }
 
@@ -224,13 +273,17 @@ Panel {
   // cadence (see runNextOfflineCheck below) rather than a separate timer —
   // that poller already connects to every visible camera every 60s
   // regardless of whether the panel is open, which is exactly the
-  // "reasonably fresh, even cold" cache this is after. Plain argv, not a
-  // shell string: rtspUrl embeds the camera's own username/password, which
-  // encodeURIComponent doesn't escape single quotes out of, so building
-  // this as a `sh -c "..."` string would be an injection risk.
+  // "reasonably fresh, even cold" cache this is after. The URL (with the
+  // camera's own username/password) goes through a concat-file, not argv
+  // or a `sh -c` string — see streamTmpPath above.
   function grabThumbnail(camera) {
+    var previewPath = root.streamTmpPath(camera, "preview.concat")
+    root.writeConcatFile(previewPath, CameraModel.previewUrl(camera))
+    // No -rtsp_transport, "rtp" in the whitelist: see runNextOfflineCheck's
+    // comment above, same fix, verified against real hardware.
     Quickshell.execDetached(["timeout", "8", "ffmpeg", "-y", "-loglevel", "error",
-      "-rtsp_transport", "tcp", "-i", CameraModel.previewUrl(camera),
+      "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
+      "-i", previewPath,
       "-frames:v", "1", "-q:v", "5", root.thumbnailPath(camera)])
   }
 
@@ -293,6 +346,11 @@ Panel {
     command: ["mkdir", "-p", root.thumbnailDir]
   }
 
+  Process {
+    id: mkdirStreamTmpDirProc
+    command: ["mkdir", "-p", root.streamTmpDir]
+  }
+
   // Settings persistence owns writes; external hand-edits are picked up on
   // the next open (reload() below) rather than watched live, so a save from
   // here never races a filesystem-change reload mid-edit. Lives outside the
@@ -348,15 +406,28 @@ Panel {
     // (see onvif-ptz-osc.lua) rather than a separate overlay window kept
     // in sync with this one, which is what made the old grid-preview
     // arrows laggy in the first place.
+    //
+    // The camera password travels as ONVIF_PASSWORD in mpv's own process
+    // environment, not a --script-opts value or CLI argument: both of
+    // those end up in mpv's /proc/<pid>/cmdline, which is world-readable
+    // for as long as the stream window stays open (onvif-ptz.sh and
+    // onvif-ptz-osc.lua were updated to match — see their own comments).
+    var env = undefined
     if (camera.ptz !== false) {
       args.push("--script=" + root.pluginDir + "/onvif-ptz-osc.lua")
       args.push("--script-opts=onvifptz-script=" + root.pluginDir + "/onvif-ptz.sh"
         + ",onvifptz-host=" + camera.ip
-        + ",onvifptz-user=" + camera.username
-        + ",onvifptz-pass=" + camera.password)
+        + ",onvifptz-user=" + camera.username)
+      env = { "ONVIF_PASSWORD": camera.password }
     }
-    args.push(CameraModel.rtspUrl(camera))
-    Quickshell.execDetached(args)
+    // --playlist <file>, not the RTSP URL as a plain argument: the URL
+    // embeds the camera's username/password same as everywhere else in
+    // this file, and a bare argument here would leak it into mpv's own
+    // /proc/<pid>/cmdline for as long as the stream window stays open.
+    var playlistPath = root.streamTmpPath(camera, "open.playlist")
+    root.writePlaylistFile(playlistPath, CameraModel.rtspUrl(camera))
+    args.push("--playlist=" + playlistPath)
+    Quickshell.execDetached(env ? { command: args, environment: env } : args)
   }
 
   // Bundled alongside Panel.qml — path matches this plugin's own install
@@ -573,6 +644,58 @@ Panel {
               border.color: previewMouse.containsMouse ? root.barForeground : "transparent"
               border.width: Style.space(1)
 
+              // Last-known frame, refreshed roughly every 60s by the
+              // offline-check poller regardless of whether the panel is
+              // open — shown while the live feed below is (re)connecting,
+              // instead of a flash of plain black. Deliberately a sibling
+              // of the Loader below, not inside its sourceComponent: this
+              // Rectangle (and everything outside that Loader) already
+              // exists as soon as the camera grid itself does, independent
+              // of root.opened. Every camera's MediaPlayer gets constructed
+              // in the same instant root.opened flips true, all in one
+              // synchronous batch, and Qt doesn't composite a newly-created
+              // Item's tree until that whole batch settles — so even an
+              // instant local-file decode, if it lived *inside* that same
+              // batch, would only ever appear exactly as late as the
+              // MediaPlayer construction it was meant to cover for. Living
+              // outside it means this paints immediately, well before any
+              // of that.
+              //
+              // asynchronous: false: still true that this is a tiny local
+              // JPEG cheap enough to decode synchronously without it being
+              // a noticeable stall — no reason to hand it to a worker
+              // thread and wait on scheduling for something this small.
+              Image {
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                cache: false
+                source: "file://" + root.thumbnailPath(modelData)
+                // Defaults to shown (videoLoader.item is null before the
+                // Loader below has actually finished constructing its
+                // MediaPlayer) rather than defaults to hidden — the whole
+                // point is covering that exact gap.
+                visible: !videoLoader.item || videoLoader.item.connecting
+              }
+
+              Rectangle {
+                visible: !videoLoader.item || videoLoader.item.connecting
+                anchors.centerIn: parent
+                implicitWidth: connectingLabel.implicitWidth + Style.space(12)
+                implicitHeight: connectingLabel.implicitHeight + Style.space(6)
+                radius: Style.space(4)
+                color: "#99000000"
+
+                Text {
+                  id: connectingLabel
+                  anchors.centerIn: parent
+                  text: "Connecting…"
+                  color: "#ffffff"
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
               // Decoding only happens while the panel is actually open: the
               // Loader tears the player down when it closes, instead of
               // leaving RTSP connections and decoders running in the
@@ -581,38 +704,12 @@ Panel {
               // settings and back doesn't force every camera to reconnect
               // from scratch for an edit to just one of them.
               Loader {
+                id: videoLoader
                 anchors.fill: parent
                 active: root.opened
 
                 sourceComponent: Item {
                   anchors.fill: parent
-
-                  // Last-known frame, refreshed roughly every 60s by the
-                  // offline-check poller regardless of whether the panel
-                  // is open — shown while (re)connecting instead of a
-                  // flash of plain black. cache: false so a fresher grab
-                  // overwriting the same file path actually gets picked
-                  // up next time this Loader instantiates, rather than
-                  // Qt's image cache serving a stale in-memory copy keyed
-                  // on the unchanged file:// URL.
-                  //
-                  // asynchronous: false, deliberately: every camera's
-                  // Image/MediaPlayer/VideoOutput gets created in the same
-                  // instant the panel opens, all competing for the same
-                  // decode-thread scheduling — an async decode of even a
-                  // tiny local JPEG can lose that race and finish well
-                  // after the window's already visible, which is the
-                  // "still blank for a moment" gap this is meant to close.
-                  // A synchronous decode of a ~30-50KB JPEG is cheap enough
-                  // that blocking the UI thread for it is the right trade.
-                  Image {
-                    anchors.fill: parent
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: false
-                    cache: false
-                    source: "file://" + root.thumbnailPath(modelData)
-                    visible: connecting
-                  }
 
                   MediaPlayer {
                     id: player
@@ -637,24 +734,6 @@ Panel {
                     anchors.fill: parent
                     fillMode: VideoOutput.PreserveAspectCrop
                     visible: !connecting
-                  }
-
-                  Rectangle {
-                    visible: connecting
-                    anchors.centerIn: parent
-                    implicitWidth: connectingLabel.implicitWidth + Style.space(12)
-                    implicitHeight: connectingLabel.implicitHeight + Style.space(6)
-                    radius: Style.space(4)
-                    color: "#99000000"
-
-                    Text {
-                      id: connectingLabel
-                      anchors.centerIn: parent
-                      text: "Connecting…"
-                      color: "#ffffff"
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.caption
-                    }
                   }
 
                   Text {
@@ -795,9 +874,14 @@ Panel {
               function runTest() {
                 testState = "testing"
                 testMessage = ""
-                testProc.command = ["timeout", "6", "ffprobe", "-rtsp_transport", "tcp",
+                var testPath = root.streamTmpPath(settingsRow.modelData, "test.concat")
+                root.writeConcatFile(testPath, CameraModel.rtspUrl(settingsRow.modelData))
+                // No -rtsp_transport, "rtp" in the whitelist: see
+                // runNextOfflineCheck's comment, same fix, same reason.
+                testProc.command = ["timeout", "6", "ffprobe",
+                  "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
                   "-v", "error", "-show_entries", "stream=codec_name",
-                  "-of", "csv=p=0", CameraModel.rtspUrl(settingsRow.modelData)]
+                  "-of", "csv=p=0", testPath]
                 testProc.running = true
               }
 
