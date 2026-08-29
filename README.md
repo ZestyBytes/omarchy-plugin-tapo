@@ -1,5 +1,7 @@
 # Tapo Cameras — Omarchy Plugin
 
+![Preview](preview.png)
+
 An [Omarchy](https://omarchy.org) plugin that adds a bar icon for quickly
 viewing your TP-Link Tapo cameras. Click the icon to see a live preview of
 each camera; click a preview to open its full RTSP stream in `mpv`, tiled
