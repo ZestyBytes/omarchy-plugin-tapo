@@ -666,28 +666,32 @@ Panel {
                 NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
               }
 
-              // Bound to rowContent's real implicitHeight (see below), not a
-              // fixed guess: a hardcoded constant here had to be hand-tuned
-              // for the exact row count/wrapping of the expanded form, and
-              // silently went stale (content spilling out past this
-              // Rectangle's bottom edge, overlapping whatever row comes
-              // next) the moment that form changed shape, most recently
-              // when the Preview field pushed the old single Stream/Preview/
-              // Pan-tilt row wider than the popup and it had to split in
-              // two. This can't go stale the same way since it's the actual
-              // measured content, not an estimate of it.
+              // Back to a fixed constant, deliberately, after two failed
+              // attempts at measuring rowContent's real implicitHeight
+              // instead: this popup nests QML Layouts about seven levels
+              // deep (KeyboardPanel -> settingsColumn -> reorderArea ->
+              // this Rectangle -> rowContent -> bodyColumn -> a RowLayout
+              // -> a TextField), and Qt Quick Layouts is documented to
+              // need multiple frames to fully converge implicit sizes
+              // through nesting that deep the first time a subtree goes
+              // from zero to non-zero size. Every sibling row/the Add-
+              // camera button below reads *this* row's height (via
+              // settingsRowY/settingsRowsTotalHeight) to place itself, so
+              // as long as that read could land mid-convergence, no amount
+              // of clipping or animating *this* row's own content fixes
+              // the overlap those siblings render with. A plain ternary
+              // has no Layout convergence to wait on — it's correct the
+              // same frame `expanded` flips, every time, including the
+              // first.
               //
-              // rowContent's implicitHeight needs an extra layout pass to
-              // catch up right when bodyColumn's visibility flips (expanded
-              // toggling), so the very first frame of an expand/collapse
-              // still briefly measures against the old, wrong height. clip
-              // keeps that transient frame from spilling out visibly, same
-              // as it always would have; the Behavior turns the frame after
-              // it catches up into a smooth grow/shrink instead of a pop.
-              implicitHeight: rowContent.implicitHeight + Style.space(12) * 2
-              Behavior on implicitHeight {
-                NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-              }
+              // Deliberately generous (a real content measurement, padded
+              // hard) rather than tightly tuned: clip below means an
+              // overshoot just wastes a little blank space at the bottom
+              // of the expanded row, which is a trivial cosmetic cost next
+              // to the alternative (undershoot -> overlap again). Re-tune
+              // only if content visibly gets clipped, not to tighten
+              // whitespace.
+              implicitHeight: Style.space(48) + (expanded ? Style.space(300) : 0)
               clip: true
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
@@ -796,15 +800,19 @@ Panel {
                         color: Qt.darker(root.barForeground, 1.4)
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
+                        Layout.fillHeight: true
+                        verticalAlignment: Text.AlignVCenter
                       }
 
                       Text {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         text: settingsRow.currentName || "(unnamed camera)"
                         color: root.barForeground
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
                         elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
                       }
                     }
 
@@ -885,32 +893,17 @@ Panel {
                   }
                 }
 
-                // Expanded body: full editable fields + test. Wrapped in a
-                // clipping Item whose height (not bodyColumn's `visible`)
-                // does the collapsing: toggling a Layout child's `visible`
-                // makes ColumnLayout redo its implicit-size measurement
-                // pass asynchronously, one frame behind the property
-                // bindings (like the row-position Y below) that read it —
-                // which is exactly what made the *first* expand of a
-                // session spill out and overlap the next row, every time,
-                // even after clipping the row itself. bodyColumn now stays
-                // permanently visible/measured (nothing async to fall
-                // behind), and only this wrapper's own explicit height
-                // property — plain, synchronous, no separate layout pass —
-                // changes.
-                Item {
-                  id: bodyClip
-                  Layout.fillWidth: true
-                  Layout.topMargin: settingsRow.expanded ? Style.space(4) : 0
-                  Layout.preferredHeight: settingsRow.expanded ? bodyColumn.implicitHeight : 0
-                  Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                  }
-                  clip: true
-
+                // Expanded body: full editable fields + test. Now that the
+                // row above has a fixed height budget (not one measured
+                // from this column), there's no longer a reason for this
+                // to stay mounted-and-clipped instead of the simpler
+                // visible toggle — the outer Rectangle's clip already
+                // covers any transient layout catch-up.
                 ColumnLayout {
                   id: bodyColumn
-                  width: bodyClip.width
+                  visible: settingsRow.expanded
+                  Layout.fillWidth: true
+                  Layout.topMargin: Style.space(4)
                   spacing: Style.space(8)
 
                   TextField {
@@ -1069,7 +1062,6 @@ Panel {
                       onClicked: settingsRow.runTest()
                     }
                   }
-                }
                 }
               }
             }
