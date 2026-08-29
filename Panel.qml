@@ -691,7 +691,7 @@ Panel {
                 implicitWidth: connectingSpinner.implicitHeight + Style.space(16)
                 implicitHeight: connectingSpinner.implicitHeight + Style.space(16)
                 radius: width / 2
-                color: "#99000000"
+                color: "#66000000"
 
                 Text {
                   id: connectingSpinner
@@ -705,7 +705,7 @@ Panel {
                     running: connectingBadge.showing
                     from: 0
                     to: 360
-                    duration: 900
+                    duration: 1500
                     loops: Animation.Infinite
                   }
                 }
