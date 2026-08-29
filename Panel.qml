@@ -29,6 +29,7 @@ Panel {
   // 1 camera fills the width; 2+ tile two-across (2x1, 2x2, 2x3, ...).
   readonly property int gridColumns: visibleCameras.length > 1 ? 2 : 1
   property bool settingsMode: false
+  property bool showSettingsHelp: false
 
   readonly property string streamAppId: "tapo-camera-stream"
   // Deliberately outside the plugin's own directory: Omarchy hot-reloads
@@ -69,6 +70,80 @@ Panel {
     root.cameras[index].hidden = !root.cameras[index].hidden
     root.cameras = root.cameras.slice()
     root.persist()
+  }
+
+  // ------------------------------------------------- settings row reorder
+  //
+  // Rows normally stack at variable heights (collapsed vs. expanded).
+  // Reassigning `cameras` mid-drag to actually reorder it would rebuild
+  // every Repeater delegate — including the one currently being dragged,
+  // which would kill the gesture — so during a drag every row (dragged one
+  // excepted) is repositioned purely visually via dragFromIndex/dragToIndex,
+  // and the array is only reordered once, on release.
+  property int dragFromIndex: -1
+  property int dragToIndex: -1
+  readonly property real rowSpacingPx: Style.space(8)
+  readonly property real collapsedRowHeight: Style.space(48)
+
+  function settingsRowHeight(idx) {
+    var item = settingsRepeater.itemAt(idx)
+    return item ? item.height : root.collapsedRowHeight
+  }
+
+  function settingsRowY(idx) {
+    var y = 0
+    for (var i = 0; i < idx; i++) y += settingsRowHeight(i) + root.rowSpacingPx
+    return y
+  }
+
+  function settingsRowsTotalHeight() {
+    if (root.cameras.length === 0) return 0
+    var total = 0
+    for (var i = 0; i < root.cameras.length; i++) total += settingsRowHeight(i)
+    return total + root.rowSpacingPx * (root.cameras.length - 1)
+  }
+
+  // Where row `idx` visually sits while a drag is in progress: shifted by
+  // one slot if it's between the drag's start and current-hover position.
+  function dragVisualSlot(idx) {
+    if (root.dragFromIndex < 0 || idx === root.dragFromIndex) return idx
+    if (root.dragFromIndex < root.dragToIndex && idx > root.dragFromIndex && idx <= root.dragToIndex) return idx - 1
+    if (root.dragFromIndex > root.dragToIndex && idx >= root.dragToIndex && idx < root.dragFromIndex) return idx + 1
+    return idx
+  }
+
+  function dragSlotY(slot) { return slot * (root.collapsedRowHeight + root.rowSpacingPx) }
+
+  function collapseAllSettingsRows() {
+    for (var i = 0; i < settingsRepeater.count; i++) {
+      var item = settingsRepeater.itemAt(i)
+      if (item) item.expanded = false
+    }
+  }
+
+  function beginRowDrag(index) {
+    root.collapseAllSettingsRows()
+    root.dragFromIndex = index
+    root.dragToIndex = index
+  }
+
+  function updateRowDrag(currentY) {
+    if (root.dragFromIndex < 0) return
+    var slotHeight = root.collapsedRowHeight + root.rowSpacingPx
+    var slot = Math.round(currentY / slotHeight)
+    root.dragToIndex = Math.max(0, Math.min(root.cameras.length - 1, slot))
+  }
+
+  function endRowDrag() {
+    if (root.dragFromIndex >= 0 && root.dragToIndex >= 0 && root.dragFromIndex !== root.dragToIndex) {
+      var arr = root.cameras.slice()
+      var moved = arr.splice(root.dragFromIndex, 1)[0]
+      arr.splice(root.dragToIndex, 0, moved)
+      root.cameras = arr
+      root.persist()
+    }
+    root.dragFromIndex = -1
+    root.dragToIndex = -1
   }
 
   Timer {
@@ -153,7 +228,6 @@ Panel {
     // grows afterward — a race that looked identical to "not tall enough"
     // no matter how generous the height formula was.
     configFile.waitForJob()
-    settingsFlickable.contentY = 0
     root.controller.show()
   }
   function close() { root.controller.hide() }
@@ -167,18 +241,14 @@ Panel {
     function toggle(): void { root.toggle() }
   }
 
+  // execDetached, not a shared Process: a Process element's `running = true`
+  // is a no-op while it's already running, so reusing one meant clicking a
+  // second camera while the first stream was still open did nothing. Each
+  // call here spawns its own independent mpv instance.
   function openStream(camera) {
-    streamProcess.launch(camera)
-  }
-
-  Process {
-    id: streamProcess
-    function launch(camera) {
-      command = ["mpv", "--no-cache", "--untimed", "--profile=low-latency",
-                 "--wayland-app-id=" + root.streamAppId,
-                 "--title=" + camera.name, CameraModel.rtspUrl(camera)]
-      running = true
-    }
+    Quickshell.execDetached(["mpv", "--no-cache", "--untimed", "--profile=low-latency",
+      "--wayland-app-id=" + root.streamAppId,
+      "--title=" + camera.name, CameraModel.rtspUrl(camera)])
   }
 
   BarIconButton {
@@ -209,7 +279,7 @@ Panel {
     // Flickable as a fallback, since scrolling a long edit-everything list
     // is reasonable in a way scrolling a camera you opened this for is not.
     contentHeight: root.settingsMode
-      ? Math.min(Style.space(780), Style.space(70) + settingsColumn.implicitHeight)
+      ? Style.space(70) + settingsColumn.implicitHeight + Style.space(24)
       : Style.space(70) +
         (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
         (root.visibleCameras.length === 0 ? Style.space(56) : 0) +
@@ -239,6 +309,15 @@ Panel {
           font.pixelSize: Style.font.body
           font.bold: true
           Layout.fillWidth: true
+        }
+
+
+        PanelActionButton {
+          visible: root.settingsMode
+          iconText: "" // fa-info-circle
+          tooltipText: "About camera accounts"
+          foreground: root.showSettingsHelp ? (root.bar ? root.bar.urgent : Color.urgent) : root.barForeground
+          onClicked: root.showSettingsHelp = !root.showSettingsHelp
         }
 
         PanelActionButton {
@@ -423,15 +502,13 @@ Panel {
 
       // ---------------------------------------------------- settings mode
 
-      Flickable {
-        id: settingsFlickable
+      // No Flickable, same reasoning as the camera view above: the panel's
+      // contentHeight is sized to fit this exactly, so there'd be nothing
+      // to scroll to.
+      Item {
         visible: root.settingsMode
         Layout.fillWidth: true
-        Layout.fillHeight: true
-        contentWidth: width
-        contentHeight: settingsColumn.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
+        implicitHeight: settingsColumn.implicitHeight
 
         ColumnLayout {
           id: settingsColumn
@@ -439,6 +516,7 @@ Panel {
           spacing: Style.space(10)
 
           Text {
+            visible: root.showSettingsHelp
             text: "Camera account credentials come from the Tapo app: open the camera, tap the gear icon, then Advanced Settings → Camera Account. That's a separate login from your TP-Link cloud account — create one there if you haven't."
             color: Qt.darker(root.barForeground, 1.4)
             font.family: Style.font.family
@@ -447,14 +525,37 @@ Panel {
             Layout.fillWidth: true
           }
 
+          Item {
+            id: reorderArea
+            Layout.fillWidth: true
+            implicitHeight: root.dragFromIndex >= 0
+              ? Math.max(0, root.dragSlotY(root.cameras.length) - root.rowSpacingPx)
+              : root.settingsRowsTotalHeight()
+
           Repeater {
+            id: settingsRepeater
             model: root.settingsMode ? root.cameras : []
 
             delegate: Rectangle {
               id: settingsRow
               required property var modelData
               required property int index
-              Layout.fillWidth: true
+              width: reorderArea.width
+              z: dragArea.drag.active ? 100 : 0
+
+              Binding {
+                target: settingsRow
+                property: "y"
+                value: root.dragFromIndex >= 0
+                  ? root.dragSlotY(root.dragVisualSlot(settingsRow.index))
+                  : root.settingsRowY(settingsRow.index)
+                when: !dragArea.drag.active
+              }
+              Behavior on y {
+                enabled: !dragArea.drag.active
+                NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+              }
+
               // Fixed, not derived from headerRow/bodyColumn.implicitHeight:
               // those settle over a couple of layout passes, but the popup
               // window snapshots its size once when it opens and does not
@@ -515,6 +616,37 @@ Panel {
                 RowLayout {
                   id: headerRow
                   Layout.fillWidth: true
+
+                  Rectangle {
+                    id: gripHandle
+                    implicitWidth: Style.space(22)
+                    implicitHeight: Style.space(22)
+                    radius: Style.space(6)
+                    color: dragArea.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: "" // fa-bars (drag handle)
+                      color: Qt.darker(root.barForeground, 1.3)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    MouseArea {
+                      id: dragArea
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.SizeVerCursor
+                      drag.target: settingsRow
+                      drag.axis: Drag.YAxis
+                      drag.minimumY: 0
+                      drag.maximumY: Math.max(0, reorderArea.height - settingsRow.height)
+                      onPressed: root.beginRowDrag(settingsRow.index)
+                      onPositionChanged: if (drag.active) root.updateRowDrag(settingsRow.y)
+                      onReleased: root.endRowDrag()
+                    }
+                  }
+
                   spacing: Style.space(4)
 
                   Rectangle {
@@ -705,6 +837,7 @@ Panel {
                 }
               }
             }
+          }
           }
 
           Rectangle {
