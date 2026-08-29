@@ -338,7 +338,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "" // fa-camera
+    text: "" // fa-video
     slotSize: Style.bar.statusSlot
     tooltipText: "Tapo Cameras"
     onPressed: root.toggle()
