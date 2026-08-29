@@ -480,7 +480,12 @@ Panel {
           rowSpacing: Style.space(14)
 
         Repeater {
-          model: root.settingsMode ? [] : root.visibleCameras
+          // Always the full list, even while settings is showing — the
+          // outer Item just hides it (visible above). Emptying the model
+          // here used to destroy and recreate every MediaPlayer/RTSP
+          // connection on every trip into and back out of settings, even
+          // for cameras nothing was changed on.
+          model: root.visibleCameras
 
           delegate: ColumnLayout {
             id: cameraDelegate
@@ -535,13 +540,16 @@ Panel {
               border.color: previewMouse.containsMouse ? root.barForeground : "transparent"
               border.width: Style.space(1)
 
-              // Decoding only happens while this camera is actually on
-              // screen: the Loader tears the player down when the panel
-              // closes or settings mode is opened, instead of leaving RTSP
-              // connections and decoders running in the background.
+              // Decoding only happens while the panel is actually open: the
+              // Loader tears the player down when it closes, instead of
+              // leaving RTSP connections and decoders running in the
+              // background. It stays active while settings mode is showing
+              // (the grid is just hidden, not torn down) so switching into
+              // settings and back doesn't force every camera to reconnect
+              // from scratch for an edit to just one of them.
               Loader {
                 anchors.fill: parent
-                active: root.opened && !root.settingsMode
+                active: root.opened
 
                 sourceComponent: Item {
                   anchors.fill: parent
