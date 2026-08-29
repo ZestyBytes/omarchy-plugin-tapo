@@ -134,6 +134,16 @@ Panel {
     onLoadFailed: root.cameras = []
   }
 
+  // Overrides Panel's base open/close/toggle so every caller — the bar
+  // icon, IPC, a keybind — reloads from disk before showing, instead of
+  // risking a stale camera list if cameras.json changed since last open.
+  function open() {
+    root.reload()
+    root.controller.show()
+  }
+  function close() { root.controller.hide() }
+  function toggle() { root.opened ? root.close() : root.open() }
+
   IpcHandler {
     enabled: root.manageIpc === false
     target: root.ipcTarget
@@ -163,10 +173,7 @@ Panel {
     text: "" // fa-camera
     slotSize: Style.bar.statusSlot
     tooltipText: "Tapo Cameras"
-    onPressed: {
-      root.reload()
-      root.toggle()
-    }
+    onPressed: root.toggle()
   }
 
   KeyboardPanel {
@@ -177,13 +184,16 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: Style.space(340)
-    // Buffer covers the header row, the missing-dependency banner (when
-    // shown), the empty-state text/add-camera button (view mode) or the
-    // help text (settings mode), plus the outer margins on both edges.
-    // Deliberately generous — both lists sit in a Flickable, so a little
-    // unused space at the bottom beats clipping the last row.
+    // Base buffer covers the header row + outer margins; extra is added
+    // only for rows that are actually visible right now (the missing-
+    // dependency banner, the empty-state text + add-camera button) so a
+    // populated camera/settings list doesn't carry padding meant for those.
+    // Both lists still sit in a Flickable as a safety net against
+    // undershooting.
     contentHeight: Math.min(Style.space(560),
-      Style.space(118) + (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
+      Style.space(70) +
+      (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
+      (!root.settingsMode && root.visibleCameras.length === 0 ? Style.space(56) : 0) +
       (root.settingsMode ? settingsColumn.implicitHeight : cameraColumn.implicitHeight))
 
     PanelKeyCatcher {
@@ -400,9 +410,15 @@ Panel {
               required property var modelData
               required property int index
               Layout.fillWidth: true
-              implicitHeight: fieldsColumn.implicitHeight + Style.space(24)
+              implicitHeight: headerRow.implicitHeight + Style.space(16) +
+                (expanded ? bodyColumn.implicitHeight + Style.space(8) : 0)
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
+
+              // A freshly-added blank row starts expanded, since it has
+              // nothing to show collapsed; existing cameras start collapsed
+              // so a multi-camera list reads as a clean name list first.
+              property bool expanded: CameraModel.isBlank(modelData)
 
               property string testState: "idle" // idle | testing | ok | fail
               property string testMessage: ""
@@ -431,22 +447,53 @@ Panel {
               }
 
               ColumnLayout {
-                id: fieldsColumn
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.margins: Style.space(12)
                 spacing: Style.space(8)
 
+                // Collapsed row: name on the left, eye/trash on the right.
+                // Clicking the name area (not the icons) expands the row.
                 RowLayout {
+                  id: headerRow
                   Layout.fillWidth: true
                   spacing: Style.space(4)
 
-                  TextField {
+                  Rectangle {
                     Layout.fillWidth: true
-                    text: settingsRow.modelData.name
-                    placeholderText: "Name (e.g. Front Door)"
-                    onTextChanged: { root.cameras[settingsRow.index].name = text; root.scheduleSave() }
+                    implicitHeight: Style.space(26)
+                    radius: Style.space(6)
+                    color: headerMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+
+                    RowLayout {
+                      anchors.fill: parent
+                      anchors.leftMargin: Style.space(4)
+                      spacing: Style.space(6)
+
+                      Text {
+                        text: settingsRow.expanded ? "" : "" // fa-chevron-down : fa-chevron-right
+                        color: Qt.darker(root.barForeground, 1.4)
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                      }
+
+                      Text {
+                        Layout.fillWidth: true
+                        text: settingsRow.modelData.name || "(unnamed camera)"
+                        color: root.barForeground
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.body
+                        elide: Text.ElideRight
+                      }
+                    }
+
+                    MouseArea {
+                      id: headerMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      onClicked: settingsRow.expanded = !settingsRow.expanded
+                    }
                   }
 
                   Rectangle {
@@ -496,87 +543,103 @@ Panel {
                   }
                 }
 
-                RowLayout {
+                // Expanded body: full editable fields + test.
+                ColumnLayout {
+                  id: bodyColumn
+                  visible: settingsRow.expanded
                   Layout.fillWidth: true
-                  spacing: Style.space(4)
+                  Layout.topMargin: Style.space(4)
+                  spacing: Style.space(8)
 
                   TextField {
                     Layout.fillWidth: true
-                    text: settingsRow.modelData.ip
-                    placeholderText: "IP address"
-                    onTextChanged: { root.cameras[settingsRow.index].ip = text; root.scheduleSave() }
+                    text: settingsRow.modelData.name
+                    placeholderText: "Name (e.g. Front Door)"
+                    onTextChanged: { root.cameras[settingsRow.index].name = text; root.scheduleSave() }
                   }
 
-                  TextField {
-                    implicitWidth: Style.space(64)
-                    text: String(settingsRow.modelData.port || 554)
-                    placeholderText: "554"
-                    validator: IntValidator { bottom: 1; top: 65535 }
-                    onTextChanged: { root.cameras[settingsRow.index].port = parseInt(text, 10) || 554; root.scheduleSave() }
-                  }
-                }
-
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: Style.space(4)
-
-                  TextField {
+                  RowLayout {
                     Layout.fillWidth: true
-                    text: settingsRow.modelData.username
-                    placeholderText: "Camera account username"
-                    onTextChanged: { root.cameras[settingsRow.index].username = text; root.scheduleSave() }
+                    spacing: Style.space(4)
+
+                    TextField {
+                      Layout.fillWidth: true
+                      text: settingsRow.modelData.ip
+                      placeholderText: "IP address"
+                      onTextChanged: { root.cameras[settingsRow.index].ip = text; root.scheduleSave() }
+                    }
+
+                    TextField {
+                      implicitWidth: Style.space(64)
+                      text: String(settingsRow.modelData.port || 554)
+                      placeholderText: "554"
+                      validator: IntValidator { bottom: 1; top: 65535 }
+                      onTextChanged: { root.cameras[settingsRow.index].port = parseInt(text, 10) || 554; root.scheduleSave() }
+                    }
                   }
 
-                  TextField {
+                  RowLayout {
                     Layout.fillWidth: true
-                    password: true
-                    text: settingsRow.modelData.password
-                    placeholderText: "Camera account password"
-                    onTextChanged: { root.cameras[settingsRow.index].password = text; root.scheduleSave() }
+                    spacing: Style.space(4)
+
+                    TextField {
+                      Layout.fillWidth: true
+                      text: settingsRow.modelData.username
+                      placeholderText: "Camera account username"
+                      onTextChanged: { root.cameras[settingsRow.index].username = text; root.scheduleSave() }
+                    }
+
+                    TextField {
+                      Layout.fillWidth: true
+                      password: true
+                      text: settingsRow.modelData.password
+                      placeholderText: "Camera account password"
+                      onTextChanged: { root.cameras[settingsRow.index].password = text; root.scheduleSave() }
+                    }
                   }
-                }
 
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: Style.space(4)
-
-                  Text {
-                    text: "Stream"
-                    color: Qt.darker(root.barForeground, 1.4)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                  }
-
-                  TextField {
-                    implicitWidth: Style.space(90)
-                    text: settingsRow.modelData.stream
-                    placeholderText: "stream1"
-                    onTextChanged: { root.cameras[settingsRow.index].stream = text; root.scheduleSave() }
-                  }
-                }
-
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: Style.space(6)
-
-                  Text {
+                  RowLayout {
                     Layout.fillWidth: true
-                    text: settingsRow.testState === "testing" ? "Testing…" : settingsRow.testMessage
-                    color: settingsRow.testState === "ok" ? "#8bc34a"
-                      : settingsRow.testState === "fail" ? (root.bar ? root.bar.urgent : Color.urgent)
-                      : Qt.darker(root.barForeground, 1.6)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
-                    elide: Text.ElideRight
+                    spacing: Style.space(4)
+
+                    Text {
+                      text: "Stream"
+                      color: Qt.darker(root.barForeground, 1.4)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    TextField {
+                      implicitWidth: Style.space(90)
+                      text: settingsRow.modelData.stream
+                      placeholderText: "stream1"
+                      onTextChanged: { root.cameras[settingsRow.index].stream = text; root.scheduleSave() }
+                    }
                   }
 
-                  PanelActionButton {
-                    iconText: "Test"
-                    tooltipText: "Test RTSP connection"
-                    foreground: root.barForeground
-                    bordered: true
-                    implicitWidth: Style.space(56)
-                    onClicked: settingsRow.runTest()
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(6)
+
+                    Text {
+                      Layout.fillWidth: true
+                      text: settingsRow.testState === "testing" ? "Testing…" : settingsRow.testMessage
+                      color: settingsRow.testState === "ok" ? "#8bc34a"
+                        : settingsRow.testState === "fail" ? (root.bar ? root.bar.urgent : Color.urgent)
+                        : Qt.darker(root.barForeground, 1.6)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                      elide: Text.ElideRight
+                    }
+
+                    PanelActionButton {
+                      iconText: "Test"
+                      tooltipText: "Test RTSP connection"
+                      foreground: root.barForeground
+                      bordered: true
+                      implicitWidth: Style.space(56)
+                      onClicked: settingsRow.runTest()
+                    }
                   }
                 }
               }
