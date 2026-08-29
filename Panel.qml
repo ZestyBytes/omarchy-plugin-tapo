@@ -674,12 +674,17 @@ Panel {
                 // Defaults to shown (videoLoader.item is null before the
                 // Loader below has actually finished constructing its
                 // MediaPlayer) rather than defaults to hidden — the whole
-                // point is covering that exact gap.
-                visible: !videoLoader.item || videoLoader.item.connecting
+                // point is covering that exact gap. Opacity, not `visible`,
+                // and on the same 200ms as VideoOutput's fade-in above: a
+                // hard cut here while that one is still fading in would
+                // open a brief gap onto the black it's covering for.
+                opacity: (!videoLoader.item || videoLoader.item.connecting) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
               }
 
               Rectangle {
-                visible: !videoLoader.item || videoLoader.item.connecting
+                opacity: (!videoLoader.item || videoLoader.item.connecting) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
                 anchors.centerIn: parent
                 implicitWidth: connectingLabel.implicitWidth + Style.space(12)
                 implicitHeight: connectingLabel.implicitHeight + Style.space(6)
@@ -719,21 +724,39 @@ Panel {
                     videoOutput: videoOutput
                   }
 
-                  readonly property bool connecting: player.mediaStatus === MediaPlayer.Loading
+                  // mediaStatus alone isn't enough: for RTSP it typically
+                  // reaches Buffered (out of the "still loading" states
+                  // below) as soon as the stream negotiation finishes, not
+                  // once a frame has actually been decoded -- and decoding
+                  // the first frame means waiting for the next keyframe,
+                  // which can be the better part of a second on its own.
+                  // Relying on mediaStatus alone flips VideoOutput visible
+                  // right into that gap: a flash of the solid black it
+                  // paints before its first frame, on every single open,
+                  // not just a cold start. player.position only starts
+                  // advancing once frames are actually being presented, so
+                  // it's a much closer proxy for "there's really something
+                  // to look at" -- once true it stays true for the life of
+                  // this player instance (a fresh one is created next open).
+                  readonly property bool everStarted: player.position > 0
+                  readonly property bool connecting: !everStarted
+                    || player.mediaStatus === MediaPlayer.Loading
                     || player.mediaStatus === MediaPlayer.NoMedia
                     || player.mediaStatus === MediaPlayer.Buffering
                     || player.mediaStatus === MediaPlayer.Stalled
 
-                  // Hidden (not just painted-over), not merely behind the
-                  // Image above: VideoOutput paints solid black while it
-                  // has no frame yet, same as the black this is meant to
-                  // fix, so it has to actually be hidden for the
-                  // thumbnail underneath to show through at all.
+                  // Opacity + Behavior rather than `visible`, so even
+                  // whatever gap remains reads as a quick crossfade instead
+                  // of a hard cut -- VideoOutput paints solid black while it
+                  // has no frame yet (same black this is meant to fix), and
+                  // opacity 0 is exactly as transparent as visible:false for
+                  // letting the thumbnail underneath show through.
                   VideoOutput {
                     id: videoOutput
                     anchors.fill: parent
                     fillMode: VideoOutput.PreserveAspectCrop
-                    visible: !connecting
+                    opacity: connecting ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
                   }
 
                   Text {
