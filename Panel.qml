@@ -75,9 +75,14 @@ Panel {
     onTriggered: root.persist()
   }
 
+  property bool mpvAvailable: true
+  property bool ffprobeAvailable: true
+
   Component.onCompleted: {
     tileRuleProc.running = true
     migrateProc.running = true
+    checkMpvProc.running = true
+    checkFfprobeProc.running = true
   }
 
   // Makes mpv windows opened for camera streams tile into the layout
@@ -85,6 +90,21 @@ Panel {
   Process {
     id: tileRuleProc
     command: ["hyprctl", "keyword", "windowrulev2", "tile,class:^(" + root.streamAppId + ")$"]
+  }
+
+  // mpv/ffmpeg aren't hard dependencies of Omarchy itself, so a fresh
+  // install of this plugin can easily be missing one. Surface that as a
+  // banner instead of a click that silently does nothing.
+  Process {
+    id: checkMpvProc
+    command: ["sh", "-c", "command -v mpv"]
+    onExited: function (exitCode) { root.mpvAvailable = exitCode === 0 }
+  }
+
+  Process {
+    id: checkFfprobeProc
+    command: ["sh", "-c", "command -v ffprobe"]
+    onExited: function (exitCode) { root.ffprobeAvailable = exitCode === 0 }
   }
 
   // One-time move for installs from before cameras.json lived outside the
@@ -157,11 +177,13 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: Style.space(340)
-    // Buffer covers the header row, the empty-state text/add-camera button
-    // (view mode) or the help text (settings mode), plus the outer margins
-    // on both edges. Deliberately generous — both lists sit in a Flickable,
-    // so a little unused space at the bottom beats clipping the last row.
-    contentHeight: Math.min(Style.space(560), Style.space(118) +
+    // Buffer covers the header row, the missing-dependency banner (when
+    // shown), the empty-state text/add-camera button (view mode) or the
+    // help text (settings mode), plus the outer margins on both edges.
+    // Deliberately generous — both lists sit in a Flickable, so a little
+    // unused space at the bottom beats clipping the last row.
+    contentHeight: Math.min(Style.space(560),
+      Style.space(118) + (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
       (root.settingsMode ? settingsColumn.implicitHeight : cameraColumn.implicitHeight))
 
     PanelKeyCatcher {
@@ -195,6 +217,22 @@ Panel {
           foreground: root.barForeground
           onClicked: root.settingsMode = !root.settingsMode
         }
+      }
+
+      Text {
+        visible: !root.mpvAvailable || !root.ffprobeAvailable
+        text: {
+          var missing = []
+          if (!root.mpvAvailable) missing.push("mpv")
+          if (!root.ffprobeAvailable) missing.push("ffprobe (from ffmpeg)")
+          return "Missing " + missing.join(" and ") + " — install " +
+            (missing.length > 1 ? "them" : "it") + " to use this plugin fully."
+        }
+        color: root.bar ? root.bar.urgent : Color.urgent
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
       }
 
       // -------------------------------------------------------- view mode
