@@ -38,6 +38,17 @@ git clone https://github.com/ZestyBytes/omarchy-plugin-tapo \
 omarchy plugin enable io.github.zestybytes.tapo-cameras
 ```
 
+## Uninstall
+
+```sh
+omarchy plugin remove io.github.zestybytes.tapo-cameras
+```
+
+This removes the plugin itself; your camera list at
+`~/.local/state/omarchy/tapo-cameras/cameras.json` is left in place
+(delete it separately if you want it gone too — it holds your camera
+credentials, see below).
+
 ## Set up your cameras
 
 Everything happens from the bar — no config file editing required:
