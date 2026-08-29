@@ -688,25 +688,40 @@ Panel {
                 opacity: showing ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 anchors.centerIn: parent
-                implicitWidth: connectingSpinner.implicitHeight + Style.space(16)
-                implicitHeight: connectingSpinner.implicitHeight + Style.space(16)
-                radius: width / 2
+                implicitWidth: connectingDots.implicitWidth + Style.space(18)
+                implicitHeight: Style.space(20)
+                radius: height / 2
                 color: "#66000000"
 
-                Text {
-                  id: connectingSpinner
+                Row {
+                  id: connectingDots
                   anchors.centerIn: parent
-                  text: "" // fa-spinner
-                  color: "#ffffff"
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body * 1.3
+                  spacing: Style.space(4)
 
-                  RotationAnimation on rotation {
-                    running: connectingBadge.showing
-                    from: 0
-                    to: 360
-                    duration: 1500
-                    loops: Animation.Infinite
+                  Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                      width: Style.space(6)
+                      height: Style.space(6)
+                      radius: width / 2
+                      color: "#ffffff"
+                      opacity: 0.3
+
+                      // Each dot's own loop is the same total length
+                      // (pause + pulse + pause always sums to 1000ms), just
+                      // with the pause split differently, so all three stay
+                      // in phase indefinitely instead of drifting apart --
+                      // that's what gives the left-to-right wave rather than
+                      // three dots blinking independently.
+                      SequentialAnimation {
+                        running: connectingBadge.showing
+                        loops: Animation.Infinite
+                        PauseAnimation { duration: index * 200 }
+                        NumberAnimation { target: parent; property: "opacity"; to: 1; duration: 300 }
+                        NumberAnimation { target: parent; property: "opacity"; to: 0.3; duration: 300 }
+                        PauseAnimation { duration: (2 - index) * 200 }
+                      }
+                    }
                   }
                 }
               }
