@@ -6,7 +6,8 @@
     "password": "campass",
     "port": 554,
     "stream": "stream1",
-    "hidden": false
+    "hidden": false,
+    "ptz": true
   },
   {
     "name": "Backyard",
@@ -15,6 +16,7 @@
     "password": "campass",
     "port": 554,
     "stream": "stream1",
-    "hidden": false
+    "hidden": false,
+    "ptz": false
   }
 ]

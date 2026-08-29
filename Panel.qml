@@ -162,6 +162,72 @@ Panel {
     checkFfprobeProc.running = true
   }
 
+  // -------------------------------------------- offline/online notifications
+  //
+  // Runs regardless of whether the panel is open — that's the whole point
+  // of a notification. Checks run one camera at a time through a single
+  // Process (reusing it for concurrent checks would just no-op, the same
+  // bug openStream() used to have) and only ever fire a notification on an
+  // actual state *change*, never for a camera that's simply always offline
+  // (an unconfigured stub, or one you know is down), and never on the very
+  // first check each session (nothing to compare against yet).
+  property var cameraOnlineState: ({})
+  property var offlineCheckQueue: []
+
+  Timer {
+    id: offlineCheckTimer
+    interval: 60000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.startOfflineCheckRound()
+  }
+
+  function startOfflineCheckRound() {
+    if (!root.ffprobeAvailable) return
+    root.offlineCheckQueue = root.visibleCameras.filter(function (c) { return c.ip })
+    root.runNextOfflineCheck()
+  }
+
+  function runNextOfflineCheck() {
+    if (offlineCheckProc.running || root.offlineCheckQueue.length === 0) return
+    offlineCheckProc.currentCamera = root.offlineCheckQueue.shift()
+    offlineCheckProc.capturedOut = ""
+    offlineCheckProc.command = ["timeout", "8", "ffprobe", "-rtsp_transport", "tcp", "-v", "error",
+      "-show_entries", "stream=codec_name", "-of", "csv=p=0", CameraModel.rtspUrl(offlineCheckProc.currentCamera)]
+    offlineCheckProc.running = true
+  }
+
+  function noteOnlineState(camera, isOnline) {
+    var previous = root.cameraOnlineState[camera.name]
+    root.cameraOnlineState[camera.name] = isOnline
+    if (previous === undefined || previous === isOnline) return
+    if (isOnline) {
+      Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
+        "-u", "low", camera.name + " is back online"])
+    } else {
+      Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
+        "-u", "normal", camera.name + " is offline", "Couldn't reach its RTSP stream."])
+    }
+  }
+
+  Process {
+    id: offlineCheckProc
+    property var currentCamera: null
+    property string capturedOut: ""
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: offlineCheckProc.capturedOut = String(text || "").trim()
+    }
+    onExited: function (exitCode) {
+      if (offlineCheckProc.currentCamera) {
+        root.noteOnlineState(offlineCheckProc.currentCamera, exitCode === 0 && offlineCheckProc.capturedOut !== "")
+      }
+      offlineCheckProc.currentCamera = null
+      root.runNextOfflineCheck()
+    }
+  }
+
   // Makes mpv windows opened for camera streams tile into the layout
   // instead of floating, so they're not left as an unmanaged window.
   Process {
@@ -249,6 +315,20 @@ Panel {
     Quickshell.execDetached(["mpv", "--no-cache", "--untimed", "--profile=low-latency",
       "--wayland-app-id=" + root.streamAppId,
       "--title=" + camera.name, CameraModel.rtspUrl(camera)])
+  }
+
+  // Bundled alongside Panel.qml — path matches this plugin's own install
+  // directory, same convention as legacyConfigPath above.
+  readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras"
+
+  function ptzMove(camera, direction) {
+    Quickshell.execDetached(["bash", root.pluginDir + "/onvif-ptz.sh", "move",
+      camera.ip, camera.username, camera.password, direction])
+  }
+
+  function ptzStop(camera) {
+    Quickshell.execDetached(["bash", root.pluginDir + "/onvif-ptz.sh", "stop",
+      camera.ip, camera.username, camera.password])
   }
 
   BarIconButton {
@@ -404,6 +484,11 @@ Panel {
 
           delegate: ColumnLayout {
             id: cameraDelegate
+            // Named alias for the outer Repeater's implicit `modelData`
+            // (the camera), so the PTZ direction-pad Repeater further down
+            // — whose own `modelData` shadows this one — can still reach
+            // it unambiguously.
+            property var camera: modelData
             Layout.fillWidth: true
             // Without this, GridLayout can size a column from its cell's
             // own content width — here, the short "Preview unavailable"
@@ -441,6 +526,7 @@ Panel {
             }
 
             Rectangle {
+              id: previewCell
               Layout.fillWidth: true
               implicitHeight: root.gridColumns > 1 ? Style.space(120) : Style.space(160)
               radius: Style.space(8)
@@ -499,6 +585,56 @@ Panel {
                 anchors.fill: parent
                 hoverEnabled: true
                 onClicked: root.openStream(modelData)
+              }
+
+              // Pan/tilt overlay: only shown on hover, so it doesn't
+              // clutter a normal glance at the grid. Held down (not a
+              // single click) since ONVIF ContinuousMove needs an explicit
+              // Stop or the camera just keeps panning.
+              Item {
+                visible: modelData.ptz !== false && previewMouse.containsMouse
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: Style.space(6)
+                width: Style.space(72)
+                height: Style.space(72)
+
+                Repeater {
+                  model: [
+                    { dir: "up",    glyph: "", x: 1, y: 0 },
+                    { dir: "down",  glyph: "", x: 1, y: 2 },
+                    { dir: "left",  glyph: "", x: 0, y: 1 },
+                    { dir: "right", glyph: "", x: 2, y: 1 }
+                  ]
+
+                  delegate: Rectangle {
+                    required property var modelData
+                    x: modelData.x * Style.space(24)
+                    y: modelData.y * Style.space(24)
+                    width: Style.space(24)
+                    height: Style.space(24)
+                    radius: Style.space(12)
+                    color: ptzMouse.pressed ? Qt.darker(root.barForeground, 4)
+                      : ptzMouse.containsMouse ? Qt.darker(root.barForeground, 7) : "#66000000"
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: modelData.glyph
+                      color: "#ffffff"
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    MouseArea {
+                      id: ptzMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      onPressed: root.ptzMove(cameraDelegate.camera, modelData.dir)
+                      onReleased: root.ptzStop(cameraDelegate.camera)
+                      onCanceled: root.ptzStop(cameraDelegate.camera)
+                    }
+                  }
+                }
               }
             }
           }
@@ -583,6 +719,10 @@ Panel {
               // root.cameras[index] (see the Name field below) doesn't
               // change what modelData reports back.
               property string currentName: modelData.name
+              // Same staleness issue as currentName above, for the PTZ
+              // toggle's checkbox fill.
+              property bool currentPtz: modelData.ptz !== false
+              property bool confirmingDelete: false
 
               property string testState: "idle" // idle | testing | ok | fail
               property string testMessage: ""
@@ -716,24 +856,46 @@ Panel {
 
                   Rectangle {
                     id: trashButton
-                    implicitWidth: Style.space(26)
+                    implicitWidth: settingsRow.confirmingDelete ? Style.space(96) : Style.space(26)
                     implicitHeight: Style.space(26)
                     radius: Style.space(6)
-                    color: trashMouse.containsMouse ? Qt.darker(root.bar ? root.bar.urgent : Color.urgent, 2.2) : "transparent"
+                    color: settingsRow.confirmingDelete ? (root.bar ? root.bar.urgent : Color.urgent)
+                      : trashMouse.containsMouse ? Qt.darker(root.bar ? root.bar.urgent : Color.urgent, 2.2) : "transparent"
+
+                    Behavior on implicitWidth { NumberAnimation { duration: 120 } }
+
+                    // First click arms it (widens to "Confirm?" and resets
+                    // after a few seconds if you don't follow through);
+                    // second click while armed actually deletes. Removing a
+                    // configured camera has no undo, so a stray click
+                    // shouldn't be able to do it by itself.
+                    Timer {
+                      id: confirmTimer
+                      interval: 3000
+                      onTriggered: settingsRow.confirmingDelete = false
+                    }
 
                     Text {
                       anchors.centerIn: parent
-                      text: "" // fa-trash
-                      color: trashMouse.containsMouse ? (root.bar ? root.bar.urgent : Color.urgent) : root.barForeground
+                      text: settingsRow.confirmingDelete ? "Confirm?" : ""
+                      color: settingsRow.confirmingDelete ? "#ffffff" : (trashMouse.containsMouse ? (root.bar ? root.bar.urgent : Color.urgent) : root.barForeground)
                       font.family: Style.font.family
-                      font.pixelSize: Style.font.icon
+                      font.pixelSize: settingsRow.confirmingDelete ? Style.font.caption : Style.font.icon
                     }
 
                     MouseArea {
                       id: trashMouse
                       anchors.fill: parent
                       hoverEnabled: true
-                      onClicked: root.removeCamera(settingsRow.index)
+                      onClicked: {
+                        if (settingsRow.confirmingDelete) {
+                          confirmTimer.stop()
+                          root.removeCamera(settingsRow.index)
+                        } else {
+                          settingsRow.confirmingDelete = true
+                          confirmTimer.restart()
+                        }
+                      }
                     }
                   }
                 }
@@ -813,6 +975,43 @@ Panel {
                       text: settingsRow.modelData.stream
                       placeholderText: "stream1"
                       onTextChanged: { root.cameras[settingsRow.index].stream = text; root.scheduleSave() }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                      implicitWidth: Style.space(18)
+                      implicitHeight: Style.space(18)
+                      radius: Style.space(4)
+                      color: settingsRow.currentPtz ? root.barForeground : "transparent"
+                      border.color: root.barForeground
+                      border.width: Style.space(1)
+
+                      Text {
+                        anchors.centerIn: parent
+                        visible: settingsRow.currentPtz
+                        text: "" // fa-check
+                        color: Qt.darker(root.barForeground, 10)
+                        font.family: Style.font.family
+                        font.pixelSize: Style.space(10)
+                      }
+
+                      MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        onClicked: {
+                          settingsRow.currentPtz = !settingsRow.currentPtz
+                          root.cameras[settingsRow.index].ptz = settingsRow.currentPtz
+                          root.scheduleSave()
+                        }
+                      }
+                    }
+
+                    Text {
+                      text: "Pan/tilt"
+                      color: Qt.darker(root.barForeground, 1.4)
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
                     }
                   }
 

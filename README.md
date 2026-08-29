@@ -20,7 +20,9 @@ file.
   for the live preview
 - [`mpv`](https://mpv.io) and [`ffprobe`](https://ffmpeg.org) (part of
   `ffmpeg`) — mpv plays the full stream on click, ffprobe powers the
-  settings screen's "Test" button
+  settings screen's "Test" button and the offline-notification check
+- `curl` and `openssl` (both near-universal on Arch already) — used by the
+  bundled `onvif-ptz.sh` for pan/tilt control
 - Tapo cameras with RTSP enabled and a **camera account** configured (see
   below) — most plugged-in Tapo cameras (C1xx/C2xx/C3xx series) support
   this; battery-powered doorbells and battery cameras generally don't, since
@@ -91,19 +93,40 @@ the whole widget to reload on every save.
 
 - `Panel.qml` — the whole plugin: bar icon, the camera-list popup (live
   video via Qt Multimedia, click to open the full stream in `mpv`), and the
-  settings popup (add/edit/hide/remove/test, all reading and writing
-  `cameras.json`).
+  settings popup (add/edit/hide/remove/reorder/test, all reading and
+  writing `cameras.json`).
 - `CameraModel.js` — parses/serializes `cameras.json` and builds the
   `rtsp://user:pass@ip:port/streamN` URL for each camera.
+- `onvif-ptz.sh` — a small curl/openssl ONVIF SOAP client for pan/tilt.
 
 2+ cameras tile into a grid (1 camera fills the width); drag a settings
 row's grip handle to reorder the list.
 
+**Pan/tilt** — hover a live preview to reveal directional arrows (only for
+cameras with the "Pan/tilt" checkbox enabled in their settings, on by
+default). Hold a direction to move, release to stop — this uses ONVIF
+`ContinuousMove`/`Stop` over the camera's local ONVIF port (2020), with the
+same camera-account credentials as RTSP. Cameras without a physical
+pan/tilt mount will just ignore the commands harmlessly; untick the
+checkbox to hide the arrows for those.
+
+**Delete confirmation** — the trash icon in settings needs two clicks: the
+first arms it ("Confirm?", with a few seconds to change your mind), the
+second actually removes the camera.
+
+**Offline notifications** — runs in the background regardless of whether
+the panel is open. Every 60s, each visible camera's RTSP stream is
+checked; a desktop notification fires only on an actual state *change*
+(went offline, or came back online) — never repeatedly for a camera that's
+simply always unreachable, and never on the first check of a session.
+
 ## Roadmap / ideas
 
-- PTZ controls (pan/tilt/zoom) for supported models
 - ONVIF discovery to help find cameras' IPs automatically
-- Confirmation before removing a camera
+- Motion-detection notifications — investigated for this release; Tapo's
+  ONVIF event (pull-point) service proved too unreliable on real hardware
+  to build on (the camera's embedded web server degrades under repeated
+  polling), so this is on hold pending a more robust approach
 
 ## License
 

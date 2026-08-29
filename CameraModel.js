@@ -6,13 +6,16 @@
 // cameras.json format (see cameras.json.example):
 // [
 //   { "name": "Front Door", "ip": "192.168.1.50", "username": "camuser",
-//     "password": "campass", "port": 554, "stream": "stream1", "hidden": false }
+//     "password": "campass", "port": 554, "stream": "stream1", "hidden": false,
+//     "ptz": true }
 // ]
 //
 // "username"/"password" are the *camera account* credentials set in the
 // Tapo app under Advanced Settings -> Camera Account (NOT the TP-Link cloud
 // login). "stream" is "stream1" (HD) or "stream2" (SD). "hidden" lets a
-// camera stay configured but be tucked out of the main list.
+// camera stay configured but be tucked out of the main list. "ptz" shows/
+// hides the pan/tilt overlay controls for cameras that don't support ONVIF
+// PTZ (defaults on, since most Tapo cameras with a physical mount do).
 //
 // This file is edited two ways: by hand (bulk setup, scripting) and from
 // the panel's settings view (Panel.qml), which round-trips through
@@ -45,7 +48,8 @@ function parseCameras(jsonText) {
             password: cam.password || "",
             port: cam.port || 554,
             stream: cam.stream || "stream1",
-            hidden: cam.hidden === true
+            hidden: cam.hidden === true,
+            ptz: cam.ptz !== false
         };
         out.url = rtspUrl(out);
         return out;
@@ -71,12 +75,13 @@ function serializeCameras(cameras) {
                 password: cam.password || "",
                 port: cam.port || 554,
                 stream: cam.stream || "stream1",
-                hidden: cam.hidden === true
+                hidden: cam.hidden === true,
+                ptz: cam.ptz !== false
             };
         });
     return JSON.stringify(cleaned, null, 2) + "\n";
 }
 
 function blankCamera() {
-    return { name: "", ip: "", username: "", password: "", port: 554, stream: "stream1", hidden: false, url: "" };
+    return { name: "", ip: "", username: "", password: "", port: 554, stream: "stream1", hidden: false, ptz: true, url: "" };
 }
