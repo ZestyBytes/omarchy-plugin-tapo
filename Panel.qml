@@ -139,8 +139,14 @@ Panel {
   // Overrides Panel's base open/close/toggle so every caller — the bar
   // icon, IPC, a keybind — reloads from disk before showing, instead of
   // risking a stale camera list if cameras.json changed since last open.
+  // Also resets both Flickables' scroll position: they're hidden rather
+  // than destroyed when the panel closes, so a scroll from an earlier,
+  // shorter-panel session otherwise stuck around and made the next open
+  // look like it needed scrolling even after a height fix landed.
   function open() {
     root.reload()
+    cameraFlickable.contentY = 0
+    settingsFlickable.contentY = 0
     root.controller.show()
   }
   function close() { root.controller.hide() }
@@ -287,6 +293,7 @@ Panel {
       }
 
       Flickable {
+        id: cameraFlickable
         visible: !root.settingsMode
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -406,6 +413,7 @@ Panel {
       // ---------------------------------------------------- settings mode
 
       Flickable {
+        id: settingsFlickable
         visible: root.settingsMode
         Layout.fillWidth: true
         Layout.fillHeight: true
