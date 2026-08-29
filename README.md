@@ -83,11 +83,14 @@ the whole widget to reload on every save.
 - `CameraModel.js` — parses/serializes `cameras.json` and builds the
   `rtsp://user:pass@ip:port/streamN` URL for each camera.
 
+2+ cameras tile into a grid (1 camera fills the width); drag a settings
+row's grip handle to reorder the list.
+
 ## Roadmap / ideas
 
 - PTZ controls (pan/tilt/zoom) for supported models
-- Multi-camera grid view in one panel
 - ONVIF discovery to help find cameras' IPs automatically
+- Confirmation before removing a camera
 
 ## License
 
