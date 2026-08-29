@@ -26,6 +26,8 @@ Panel {
   // source of truth. The view list below filters it for display.
   property var cameras: []
   readonly property var visibleCameras: cameras.filter(function (c) { return !c.hidden })
+  // 1 camera fills the width; 2+ tile two-across (2x1, 2x2, 2x3, ...).
+  readonly property int gridColumns: visibleCameras.length > 1 ? 2 : 1
   property bool settingsMode: false
 
   readonly property string streamAppId: "tapo-camera-stream"
@@ -183,7 +185,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: Style.space(340)
+    contentWidth: !root.settingsMode && root.gridColumns > 1 ? Style.space(520) : Style.space(340)
     // Base buffer covers the header row + outer margins; extra is added
     // only for rows that are actually visible right now (the missing-
     // dependency banner, the empty-state text + add-camera button) so a
@@ -293,10 +295,12 @@ Panel {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
-        ColumnLayout {
+        GridLayout {
           id: cameraColumn
           width: parent.width
-          spacing: Style.space(14)
+          columns: root.gridColumns
+          columnSpacing: Style.space(14)
+          rowSpacing: Style.space(14)
 
         Repeater {
           model: root.settingsMode ? [] : root.visibleCameras
@@ -305,6 +309,12 @@ Panel {
             id: cameraDelegate
             Layout.fillWidth: true
             spacing: Style.space(4)
+            // Fixed, not derived from the name/ip row's text-metrics-based
+            // implicitHeight: that needs a layout pass to settle, but the
+            // popup window snapshots its size once when it opens (see the
+            // settingsRow comment below) — a reactive height here caused
+            // the same "have to scroll to see everything" undersizing.
+            implicitHeight: (root.gridColumns > 1 ? Style.space(120) : Style.space(160)) + Style.space(28)
 
             RowLayout {
               Layout.fillWidth: true
@@ -329,7 +339,7 @@ Panel {
 
             Rectangle {
               Layout.fillWidth: true
-              implicitHeight: Style.space(160)
+              implicitHeight: root.gridColumns > 1 ? Style.space(120) : Style.space(160)
               radius: Style.space(8)
               clip: true
               color: Qt.darker(root.barForeground, 10)
