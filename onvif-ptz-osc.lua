@@ -50,9 +50,12 @@ local function layout()
   local w, h = mp.get_osd_size()
   if not w or w <= 0 or not h or h <= 0 then return end
 
+  -- Top-right, not bottom-right: mpv's own on-screen controller (seek bar,
+  -- title) lives along the bottom edge and was eating clicks meant for
+  -- these buttons.
   local cell = BTN + GAP
   local ox = w - MARGIN - cell * 3
-  local oy = h - MARGIN - cell * 3
+  local oy = MARGIN
 
   local function rect(gx, gy)
     local x0 = ox + gx * cell
