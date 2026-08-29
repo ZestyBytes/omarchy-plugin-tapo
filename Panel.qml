@@ -683,21 +683,31 @@ Panel {
               }
 
               Rectangle {
-                opacity: (!videoLoader.item || videoLoader.item.connecting) ? 1 : 0
+                id: connectingBadge
+                readonly property bool showing: !videoLoader.item || videoLoader.item.connecting
+                opacity: showing ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
                 anchors.centerIn: parent
-                implicitWidth: connectingLabel.implicitWidth + Style.space(12)
-                implicitHeight: connectingLabel.implicitHeight + Style.space(6)
-                radius: Style.space(4)
+                implicitWidth: connectingSpinner.implicitHeight + Style.space(16)
+                implicitHeight: connectingSpinner.implicitHeight + Style.space(16)
+                radius: width / 2
                 color: "#99000000"
 
                 Text {
-                  id: connectingLabel
+                  id: connectingSpinner
                   anchors.centerIn: parent
-                  text: "Connecting…"
+                  text: "" // fa-spinner
                   color: "#ffffff"
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.body * 1.3
+
+                  RotationAnimation on rotation {
+                    running: connectingBadge.showing
+                    from: 0
+                    to: 360
+                    duration: 900
+                    loops: Animation.Infinite
+                  }
                 }
               }
 
