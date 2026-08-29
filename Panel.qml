@@ -199,6 +199,7 @@ Panel {
 
   property bool mpvAvailable: true
   property bool ffprobeAvailable: true
+  property bool python3Available: true
 
   Component.onCompleted: {
     tileRuleProc.running = true
@@ -207,6 +208,7 @@ Panel {
     mkdirStreamTmpDirProc.running = true
     checkMpvProc.running = true
     checkFfprobeProc.running = true
+    checkPython3Proc.running = true
   }
 
   // -------------------------------------------- offline/online notifications
@@ -326,6 +328,64 @@ Panel {
     id: checkFfprobeProc
     command: ["sh", "-c", "command -v ffprobe"]
     onExited: function (exitCode) { root.ffprobeAvailable = exitCode === 0 }
+  }
+
+  Process {
+    id: checkPython3Proc
+    command: ["sh", "-c", "command -v python3"]
+    onExited: function (exitCode) { root.python3Available = exitCode === 0 }
+  }
+
+  // -------------------------------------------- motion/person notifications
+  //
+  // One persistent process per camera, long-polling its ONVIF Events
+  // service (onvif-events.py) -- independent of the offline-check poller
+  // above and of whether the panel is open, same reasoning as the
+  // offline/online notifications. Coalesces repeats of the same kind of
+  // detection on the same camera within a short window, since a camera
+  // firing several motion cells in quick succession would otherwise be
+  // several notifications for what's really one event.
+  //
+  // Unverified against real camera hardware: ONVIF's generic motion topic
+  // is standard and (per Home Assistant's Tapo integration, which uses the
+  // same PullPoint mechanism) known to work over the local network with no
+  // cloud account. Person/pet/vehicle *classification* on top of plain
+  // motion is a vendor extension, not something ONVIF standardizes, and
+  // onvif-events.py's guess at how Tapo exposes it hasn't been confirmed
+  // against a real notification.
+  property var detectionCooldownUntil: ({})
+  readonly property int detectionCooldownMs: 15000
+
+  function noteDetection(camera, label) {
+    var key = camera.name + ":" + label
+    var now = Date.now()
+    if (root.detectionCooldownUntil[key] && now < root.detectionCooldownUntil[key]) return
+    root.detectionCooldownUntil[key] = now + root.detectionCooldownMs
+    Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
+      "-u", "normal", label + " detected on " + camera.name])
+  }
+
+  Repeater {
+    model: root.python3Available ? root.visibleCameras : []
+    // Non-visual: exists purely to own a persistent per-camera Process.
+    // Recreated (restarting every camera's subscription) whenever
+    // root.cameras is reassigned -- including from a settings-screen edit
+    // to any camera, since visibleCameras is a fresh array each time. A
+    // known rough edge, not a correctness bug: subscriptions are cheap to
+    // re-establish and settings edits are rare compared to normal viewing.
+    delegate: Item {
+      Process {
+        running: !!modelData.ip && !!modelData.username
+        command: ["python3", root.pluginDir + "/onvif-events.py", modelData.ip, modelData.username]
+        environment: { "ONVIF_PASSWORD": modelData.password }
+        stdout: SplitParser {
+          onRead: function (line) {
+            var label = String(line || "").trim()
+            if (label) root.noteDetection(modelData, label)
+          }
+        }
+      }
+    }
   }
 
   // One-time move for installs from before cameras.json lived outside the
@@ -513,12 +573,13 @@ Panel {
       }
 
       Text {
-        visible: !root.mpvAvailable || !root.ffprobeAvailable
+        visible: !root.mpvAvailable || !root.ffprobeAvailable || !root.python3Available
         text: {
           var missing = []
           if (!root.mpvAvailable) missing.push("mpv")
           if (!root.ffprobeAvailable) missing.push("ffprobe (from ffmpeg)")
-          return "Missing " + missing.join(" and ") + " — install " +
+          if (!root.python3Available) missing.push("python3")
+          return "Missing " + missing.join(", ") + " — install " +
             (missing.length > 1 ? "them" : "it") + " to use this plugin fully."
         }
         color: root.bar ? root.bar.urgent : Color.urgent
