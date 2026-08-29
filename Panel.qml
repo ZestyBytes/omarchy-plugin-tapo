@@ -666,16 +666,17 @@ Panel {
                 NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
               }
 
-              // Fixed, not derived from headerRow/bodyColumn.implicitHeight:
-              // those settle over a couple of layout passes, but the popup
-              // window snapshots its size once when it opens and does not
-              // grow afterward, so a reactive height here left the window
-              // too short until something else forced a relayout. Known
-              // constants are correct on the very first pass instead.
-              // (250, not 210: the Pan/tilt checkbox got its own row below
-              // Stream/Preview instead of sharing one — see that RowLayout's
-              // comment. Bump this again if a row is ever added or removed.)
-              implicitHeight: Style.space(48) + (expanded ? Style.space(250) : 0)
+              // Bound to rowContent's real implicitHeight (see below), not a
+              // fixed guess: a hardcoded constant here had to be hand-tuned
+              // for the exact row count/wrapping of the expanded form, and
+              // silently went stale (content spilling out past this
+              // Rectangle's bottom edge, overlapping whatever row comes
+              // next) the moment that form changed shape, most recently
+              // when the Preview field pushed the old single Stream/Preview/
+              // Pan-tilt row wider than the popup and it had to split in
+              // two. This can't go stale the same way since it's the actual
+              // measured content, not an estimate of it.
+              implicitHeight: rowContent.implicitHeight + Style.space(12) * 2
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
 
@@ -722,6 +723,7 @@ Panel {
               }
 
               ColumnLayout {
+                id: rowContent
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
