@@ -676,7 +676,19 @@ Panel {
               // Pan-tilt row wider than the popup and it had to split in
               // two. This can't go stale the same way since it's the actual
               // measured content, not an estimate of it.
+              //
+              // rowContent's implicitHeight needs an extra layout pass to
+              // catch up right when bodyColumn's visibility flips (expanded
+              // toggling), so the very first frame of an expand/collapse
+              // still briefly measures against the old, wrong height. clip
+              // keeps that transient frame from spilling out visibly, same
+              // as it always would have; the Behavior turns the frame after
+              // it catches up into a smooth grow/shrink instead of a pop.
               implicitHeight: rowContent.implicitHeight + Style.space(12) * 2
+              Behavior on implicitHeight {
+                NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+              }
+              clip: true
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
 
