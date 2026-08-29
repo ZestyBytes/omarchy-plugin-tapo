@@ -312,24 +312,27 @@ Panel {
   // second camera while the first stream was still open did nothing. Each
   // call here spawns its own independent mpv instance.
   function openStream(camera) {
-    Quickshell.execDetached(["mpv", "--no-cache", "--untimed", "--profile=low-latency",
-      "--wayland-app-id=" + root.streamAppId,
-      "--title=" + camera.name, CameraModel.rtspUrl(camera)])
+    var args = ["mpv", "--no-cache", "--untimed", "--profile=low-latency",
+      "--wayland-app-id=" + root.streamAppId, "--title=" + camera.name]
+    // PTZ arrows for the tiled view: handled entirely inside mpv itself
+    // (see onvif-ptz-osc.lua) rather than a separate overlay window kept
+    // in sync with this one, which is what made the old grid-preview
+    // arrows laggy in the first place.
+    if (camera.ptz !== false) {
+      args.push("--script=" + root.pluginDir + "/onvif-ptz-osc.lua")
+      args.push("--script-opts=onvifptz-script=" + root.pluginDir + "/onvif-ptz.sh"
+        + ",onvifptz-host=" + camera.ip
+        + ",onvifptz-user=" + camera.username
+        + ",onvifptz-pass=" + camera.password)
+    }
+    args.push(CameraModel.rtspUrl(camera))
+    Quickshell.execDetached(args)
   }
 
   // Bundled alongside Panel.qml — path matches this plugin's own install
-  // directory, same convention as legacyConfigPath above.
+  // directory, same convention as legacyConfigPath above. Used to locate
+  // onvif-ptz.sh and onvif-ptz-osc.lua, passed into mpv above.
   readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras"
-
-  function ptzMove(camera, direction) {
-    Quickshell.execDetached(["bash", root.pluginDir + "/onvif-ptz.sh", "move",
-      camera.ip, camera.username, camera.password, direction])
-  }
-
-  function ptzStop(camera) {
-    Quickshell.execDetached(["bash", root.pluginDir + "/onvif-ptz.sh", "stop",
-      camera.ip, camera.username, camera.password])
-  }
 
   BarIconButton {
     id: button
@@ -599,9 +602,8 @@ Panel {
               // here, but sitting on top of the live VideoOutput made the
               // already-decoding preview flicker, and PTZ on a thumbnail
               // you're not actually watching full-size isn't that useful
-              // anyway. Dropped for now -- root.ptzMove/ptzStop are still
-              // there for a future overlay tied to the tiled mpv window
-              // instead (see openStream()).
+              // anyway. It lives in the tiled mpv view instead now — see
+              // openStream() and onvif-ptz-osc.lua.
             }
           }
         }

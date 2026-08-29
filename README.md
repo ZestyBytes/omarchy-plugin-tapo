@@ -22,7 +22,9 @@ file.
   `ffmpeg`) — mpv plays the full stream on click, ffprobe powers the
   settings screen's "Test" button and the offline-notification check
 - `curl` and `openssl` (both near-universal on Arch already) — used by the
-  bundled `onvif-ptz.sh` for pan/tilt control
+  bundled `onvif-ptz.sh` for pan/tilt control; the pan/tilt arrows on the
+  `mpv` stream view also need mpv's bundled Lua scripting support, which
+  the mainline Arch `mpv` package already has built in
 - Tapo cameras with RTSP enabled and a **camera account** configured (see
   below) — most plugged-in Tapo cameras (C1xx/C2xx/C3xx series) support
   this; battery-powered doorbells and battery cameras generally don't, since
@@ -104,18 +106,26 @@ the whole widget to reload on every save.
 - `CameraModel.js` — parses/serializes `cameras.json` and builds the
   `rtsp://user:pass@ip:port/streamN` URL for each camera.
 - `onvif-ptz.sh` — a small curl/openssl ONVIF SOAP client for pan/tilt.
+- `onvif-ptz-osc.lua` — an mpv script drawing the pan/tilt arrows on the
+  tiled stream view; see below.
 
 2+ cameras tile into a grid (1 camera fills the width); drag a settings
 row's grip handle to reorder the list.
 
-**Pan/tilt** — `onvif-ptz.sh` (ONVIF `ContinuousMove`/`Stop` over the
-camera's local ONVIF port 2020, same camera-account credentials as RTSP) is
-in place and works against real hardware, but isn't currently wired into
-any UI: an earlier hover-arrows overlay on the grid preview sat on top of
-the live `VideoOutput` and made the already-bandwidth-constrained preview
-flicker, so it was pulled. A future overlay tied to the tiled `mpv` window
-(the "Stream" preview, not the grid thumbnail) is the plan — see the
-roadmap below. The "Pan/tilt" checkbox in settings is kept for that.
+**Pan/tilt** — clicking a preview opens its full stream in `mpv` (as
+always); for cameras with the "Pan/tilt" checkbox on, that `mpv` instance
+also loads `onvif-ptz-osc.lua`, which draws four small arrow buttons in the
+bottom-right corner of the video and calls `onvif-ptz.sh`'s
+`ContinuousMove`/`Stop` (over the camera's local ONVIF port 2020, same
+camera-account credentials as RTSP) on press/release. This used to be a
+hover-arrows overlay on the small grid preview instead, but sitting on top
+of that live, already-bandwidth-constrained `VideoOutput` made it flicker,
+so it was moved here. Doing it as an mpv script — running inside mpv's own
+render/input loop — rather than a separate overlay window kept in sync via
+window-position polling was a deliberate choice for the same reason: no
+window-sync lag to flicker in the first place. Untick the checkbox for
+cameras without a physical pan/tilt mount, which will otherwise just ignore
+the ONVIF commands harmlessly.
 
 **Delete confirmation** — the trash icon in settings needs two clicks: the
 first arms it ("Confirm?", with a few seconds to change your mind), the
@@ -129,9 +139,6 @@ simply always unreachable, and never on the first check of a session.
 
 ## Roadmap / ideas
 
-- Pan/tilt controls for the tiled `mpv` stream view — a floating overlay
-  window tracking the mpv window's position/size (via `hyprctl`), shown on
-  hover, calling the already-working `onvif-ptz.sh`
 - ~~ONVIF (WS-Discovery) camera auto-discovery~~ — tried and dropped:
   tested a standard WS-Discovery multicast probe against real Tapo hardware
   and got zero replies, even though the cameras' ONVIF SOAP port (2020,
