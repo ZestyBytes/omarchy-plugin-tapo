@@ -595,10 +595,20 @@ Panel {
                   // up next time this Loader instantiates, rather than
                   // Qt's image cache serving a stale in-memory copy keyed
                   // on the unchanged file:// URL.
+                  //
+                  // asynchronous: false, deliberately: every camera's
+                  // Image/MediaPlayer/VideoOutput gets created in the same
+                  // instant the panel opens, all competing for the same
+                  // decode-thread scheduling — an async decode of even a
+                  // tiny local JPEG can lose that race and finish well
+                  // after the window's already visible, which is the
+                  // "still blank for a moment" gap this is meant to close.
+                  // A synchronous decode of a ~30-50KB JPEG is cheap enough
+                  // that blocking the UI thread for it is the right trade.
                   Image {
                     anchors.fill: parent
                     fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
+                    asynchronous: false
                     cache: false
                     source: "file://" + root.thumbnailPath(modelData)
                     visible: connecting
