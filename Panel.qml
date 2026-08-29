@@ -153,7 +153,6 @@ Panel {
     // grows afterward — a race that looked identical to "not tall enough"
     // no matter how generous the height formula was.
     configFile.waitForJob()
-    cameraFlickable.contentY = 0
     settingsFlickable.contentY = 0
     root.controller.show()
   }
@@ -204,13 +203,17 @@ Panel {
     // only for rows that are actually visible right now (the missing-
     // dependency banner, the empty-state text + add-camera button) so a
     // populated camera/settings list doesn't carry padding meant for those.
-    // Both lists still sit in a Flickable as a safety net against
-    // undershooting.
-    contentHeight: Math.min(Style.space(780),
-      Style.space(70) +
-      (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
-      (!root.settingsMode && root.visibleCameras.length === 0 ? Style.space(56) : 0) +
-      (root.settingsMode ? settingsColumn.implicitHeight : cameraColumn.implicitHeight))
+    //
+    // Camera view: uncapped, no internal scroll — sized to fit every row
+    // exactly, however many cameras there are. Settings keeps a cap with a
+    // Flickable as a fallback, since scrolling a long edit-everything list
+    // is reasonable in a way scrolling a camera you opened this for is not.
+    contentHeight: root.settingsMode
+      ? Math.min(Style.space(780), Style.space(70) + settingsColumn.implicitHeight)
+      : Style.space(70) +
+        (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
+        (root.visibleCameras.length === 0 ? Style.space(56) : 0) +
+        cameraColumn.implicitHeight
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -300,15 +303,14 @@ Panel {
         }
       }
 
-      Flickable {
-        id: cameraFlickable
+      // No Flickable here on purpose: the panel's contentHeight above is
+      // uncapped for this view specifically so it always sizes to fit
+      // every row exactly, so wrapping this in a scrollable area would
+      // never actually have anything to scroll to under normal use.
+      Item {
         visible: !root.settingsMode
         Layout.fillWidth: true
-        Layout.fillHeight: true
-        contentWidth: width
-        contentHeight: cameraColumn.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
+        implicitHeight: cameraColumn.implicitHeight
 
         GridLayout {
           id: cameraColumn
