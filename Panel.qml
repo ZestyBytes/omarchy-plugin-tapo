@@ -672,7 +672,10 @@ Panel {
               // grow afterward, so a reactive height here left the window
               // too short until something else forced a relayout. Known
               // constants are correct on the very first pass instead.
-              implicitHeight: Style.space(48) + (expanded ? Style.space(210) : 0)
+              // (250, not 210: the Pan/tilt checkbox got its own row below
+              // Stream/Preview instead of sharing one — see that RowLayout's
+              // comment. Bump this again if a row is ever added or removed.)
+              implicitHeight: Style.space(48) + (expanded ? Style.space(250) : 0)
               radius: Style.space(8)
               color: Qt.darker(root.barForeground, 10)
 
@@ -927,6 +930,12 @@ Panel {
                     }
                   }
 
+                  // Stream + Preview together used to share a row with the
+                  // Pan/tilt checkbox, but that row's natural width (two
+                  // labeled stream fields plus a checkbox) ran wider than
+                  // this popup's fixed content width, and nothing here
+                  // wraps -- it just spilled out past the window's edge.
+                  // Split across two rows instead of trying to cram it in.
                   RowLayout {
                     Layout.fillWidth: true
                     spacing: Style.space(4)
@@ -939,7 +948,7 @@ Panel {
                     }
 
                     TextField {
-                      implicitWidth: Style.space(90)
+                      Layout.fillWidth: true
                       text: settingsRow.modelData.stream
                       placeholderText: "stream1"
                       onTextChanged: { root.cameras[settingsRow.index].stream = text; root.scheduleSave() }
@@ -953,13 +962,16 @@ Panel {
                     }
 
                     TextField {
-                      implicitWidth: Style.space(90)
+                      Layout.fillWidth: true
                       text: settingsRow.modelData.previewStream
                       placeholderText: "stream2"
                       onTextChanged: { root.cameras[settingsRow.index].previewStream = text; root.scheduleSave() }
                     }
+                  }
 
-                    Item { Layout.fillWidth: true }
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(6)
 
                     Rectangle {
                       implicitWidth: Style.space(18)
@@ -972,7 +984,7 @@ Panel {
                       Text {
                         anchors.centerIn: parent
                         visible: settingsRow.currentPtz
-                        text: "" // fa-check
+                        text: "\uf00c" // fa-check
                         color: Qt.darker(root.barForeground, 10)
                         font.family: Style.font.family
                         font.pixelSize: Style.space(10)
@@ -995,6 +1007,8 @@ Panel {
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                     }
+
+                    Item { Layout.fillWidth: true }
                   }
 
                   RowLayout {
