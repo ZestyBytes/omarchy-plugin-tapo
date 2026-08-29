@@ -132,7 +132,15 @@ simply always unreachable, and never on the first check of a session.
 - Pan/tilt controls for the tiled `mpv` stream view — a floating overlay
   window tracking the mpv window's position/size (via `hyprctl`), shown on
   hover, calling the already-working `onvif-ptz.sh`
-- ONVIF discovery to help find cameras' IPs automatically
+- ~~ONVIF (WS-Discovery) camera auto-discovery~~ — tried and dropped:
+  tested a standard WS-Discovery multicast probe against real Tapo hardware
+  and got zero replies, even though the cameras' ONVIF SOAP port (2020,
+  what `onvif-ptz.sh` talks to) is reachable directly. Consistent with the
+  motion-detection finding below — Tapo implements just enough ONVIF to
+  serve profile/PTZ calls once you already know the IP, not the discovery
+  beacon. They use TP-Link's own separate proprietary protocol for the
+  Tapo app's own "find nearby cameras" feature, which this doesn't
+  attempt. IPs stay something you type in by hand.
 - Motion-detection notifications — investigated for this release; Tapo's
   ONVIF event (pull-point) service proved too unreliable on real hardware
   to build on (the camera's embedded web server degrades under repeated
