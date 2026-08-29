@@ -946,8 +946,6 @@ Panel {
                       implicitWidth: Style.space(90)
                       text: settingsRow.modelData.previewStream
                       placeholderText: "stream2"
-                      ToolTip.visible: hovered
-                      ToolTip.text: "Lower-res stream decoded for the live thumbnail grid. Full quality still opens when you click a preview."
                       onTextChanged: { root.cameras[settingsRow.index].previewStream = text; root.scheduleSave() }
                     }
 
