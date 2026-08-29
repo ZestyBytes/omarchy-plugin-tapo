@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.zestybytes.tapo-cameras",
+  "name": "Tapo Cameras",
+  "version": "0.1.0",
+  "author": "ZestyBytes",
+  "license": "MIT",
+  "description": "Quickly view and access your TP-Link Tapo cameras from the bar",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Tapo Cameras",
+    "category": "Utilities",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
