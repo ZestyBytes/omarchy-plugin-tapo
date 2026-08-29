@@ -885,12 +885,32 @@ Panel {
                   }
                 }
 
-                // Expanded body: full editable fields + test.
+                // Expanded body: full editable fields + test. Wrapped in a
+                // clipping Item whose height (not bodyColumn's `visible`)
+                // does the collapsing: toggling a Layout child's `visible`
+                // makes ColumnLayout redo its implicit-size measurement
+                // pass asynchronously, one frame behind the property
+                // bindings (like the row-position Y below) that read it —
+                // which is exactly what made the *first* expand of a
+                // session spill out and overlap the next row, every time,
+                // even after clipping the row itself. bodyColumn now stays
+                // permanently visible/measured (nothing async to fall
+                // behind), and only this wrapper's own explicit height
+                // property — plain, synchronous, no separate layout pass —
+                // changes.
+                Item {
+                  id: bodyClip
+                  Layout.fillWidth: true
+                  Layout.topMargin: settingsRow.expanded ? Style.space(4) : 0
+                  Layout.preferredHeight: settingsRow.expanded ? bodyColumn.implicitHeight : 0
+                  Behavior on Layout.preferredHeight {
+                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                  }
+                  clip: true
+
                 ColumnLayout {
                   id: bodyColumn
-                  visible: settingsRow.expanded
-                  Layout.fillWidth: true
-                  Layout.topMargin: Style.space(4)
+                  width: bodyClip.width
                   spacing: Style.space(8)
 
                   TextField {
@@ -1049,6 +1069,7 @@ Panel {
                       onClicked: settingsRow.runTest()
                     }
                   }
+                }
                 }
               }
             }
