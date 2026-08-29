@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.zestybytes.tapo-cameras",
   "name": "Tapo Cameras",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "ZestyBytes",
   "license": "MIT",
   "description": "Quickly view and access your TP-Link Tapo cameras from the bar",
