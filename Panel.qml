@@ -213,7 +213,8 @@ Panel {
       : Style.space(70) +
         (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
         (root.visibleCameras.length === 0 ? Style.space(56) : 0) +
-        cameraColumn.implicitHeight
+        cameraColumn.implicitHeight +
+        (root.visibleCameras.length > 0 ? Style.space(24) : 0) // breathing room under the last row
 
     PanelKeyCatcher {
       id: keyCatcher
