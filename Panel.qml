@@ -145,6 +145,14 @@ Panel {
   // look like it needed scrolling even after a height fix landed.
   function open() {
     root.reload()
+    // Blocks until the reload's file read actually completes, so
+    // root.cameras (and everything sized from it — the grid column count,
+    // the panel's height) reflects real data before the window is shown.
+    // Without this, show() could run while the read was still in flight,
+    // and this popup's window sizes itself once at show time and never
+    // grows afterward — a race that looked identical to "not tall enough"
+    // no matter how generous the height formula was.
+    configFile.waitForJob()
     cameraFlickable.contentY = 0
     settingsFlickable.contentY = 0
     root.controller.show()
@@ -198,7 +206,7 @@ Panel {
     // populated camera/settings list doesn't carry padding meant for those.
     // Both lists still sit in a Flickable as a safety net against
     // undershooting.
-    contentHeight: Math.min(Style.space(640),
+    contentHeight: Math.min(Style.space(480),
       Style.space(70) +
       (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
       (!root.settingsMode && root.visibleCameras.length === 0 ? Style.space(56) : 0) +
