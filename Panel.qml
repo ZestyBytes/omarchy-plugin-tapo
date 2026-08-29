@@ -40,6 +40,13 @@ Panel {
   readonly property string configPath: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/cameras.json"
   readonly property string legacyConfigPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras/cameras.json"
 
+  // A still frame per camera, refreshed by the offline-check poller below
+  // (piggybacked on its existing 60s/always-running cadence rather than a
+  // separate timer) and shown as a backdrop under the live preview while
+  // it's (re)connecting, instead of a flash of plain black.
+  readonly property string thumbnailDir: Quickshell.env("HOME") + "/.cache/omarchy/tapo-cameras/thumbnails"
+  function thumbnailPath(camera) { return root.thumbnailDir + "/" + CameraModel.cacheId(camera) + ".jpg" }
+
   visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -158,6 +165,7 @@ Panel {
   Component.onCompleted: {
     tileRuleProc.running = true
     migrateProc.running = true
+    mkdirThumbnailDirProc.running = true
     checkMpvProc.running = true
     checkFfprobeProc.running = true
   }
@@ -211,6 +219,21 @@ Panel {
     }
   }
 
+  // Fire-and-forget: overwrites this camera's cached thumbnail with a
+  // fresh frame. Piggybacks on the offline-check poller's already-running
+  // cadence (see runNextOfflineCheck below) rather than a separate timer —
+  // that poller already connects to every visible camera every 60s
+  // regardless of whether the panel is open, which is exactly the
+  // "reasonably fresh, even cold" cache this is after. Plain argv, not a
+  // shell string: rtspUrl embeds the camera's own username/password, which
+  // encodeURIComponent doesn't escape single quotes out of, so building
+  // this as a `sh -c "..."` string would be an injection risk.
+  function grabThumbnail(camera) {
+    Quickshell.execDetached(["timeout", "8", "ffmpeg", "-y", "-loglevel", "error",
+      "-rtsp_transport", "tcp", "-i", CameraModel.previewUrl(camera),
+      "-frames:v", "1", "-q:v", "5", root.thumbnailPath(camera)])
+  }
+
   Process {
     id: offlineCheckProc
     property var currentCamera: null
@@ -221,7 +244,9 @@ Panel {
     }
     onExited: function (exitCode) {
       if (offlineCheckProc.currentCamera) {
-        root.noteOnlineState(offlineCheckProc.currentCamera, exitCode === 0 && offlineCheckProc.capturedOut !== "")
+        var isOnline = exitCode === 0 && offlineCheckProc.capturedOut !== ""
+        root.noteOnlineState(offlineCheckProc.currentCamera, isOnline)
+        if (isOnline) root.grabThumbnail(offlineCheckProc.currentCamera)
       }
       offlineCheckProc.currentCamera = null
       root.runNextOfflineCheck()
@@ -261,6 +286,11 @@ Panel {
       "[ -f '" + root.configPath + "' ] || [ ! -f '" + root.legacyConfigPath + "' ] || " +
       "(cp '" + root.legacyConfigPath + "' '" + root.configPath + "' && rm '" + root.legacyConfigPath + "')"]
     onExited: configFile.reload()
+  }
+
+  Process {
+    id: mkdirThumbnailDirProc
+    command: ["mkdir", "-p", root.thumbnailDir]
   }
 
   // Settings persistence owns writes; external hand-edits are picked up on
@@ -557,6 +587,23 @@ Panel {
                 sourceComponent: Item {
                   anchors.fill: parent
 
+                  // Last-known frame, refreshed roughly every 60s by the
+                  // offline-check poller regardless of whether the panel
+                  // is open — shown while (re)connecting instead of a
+                  // flash of plain black. cache: false so a fresher grab
+                  // overwriting the same file path actually gets picked
+                  // up next time this Loader instantiates, rather than
+                  // Qt's image cache serving a stale in-memory copy keyed
+                  // on the unchanged file:// URL.
+                  Image {
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    source: "file://" + root.thumbnailPath(modelData)
+                    visible: connecting
+                  }
+
                   MediaPlayer {
                     id: player
                     source: modelData.previewUrl
@@ -565,19 +612,39 @@ Panel {
                     videoOutput: videoOutput
                   }
 
+                  readonly property bool connecting: player.mediaStatus === MediaPlayer.Loading
+                    || player.mediaStatus === MediaPlayer.NoMedia
+                    || player.mediaStatus === MediaPlayer.Buffering
+                    || player.mediaStatus === MediaPlayer.Stalled
+
+                  // Hidden (not just painted-over), not merely behind the
+                  // Image above: VideoOutput paints solid black while it
+                  // has no frame yet, same as the black this is meant to
+                  // fix, so it has to actually be hidden for the
+                  // thumbnail underneath to show through at all.
                   VideoOutput {
                     id: videoOutput
                     anchors.fill: parent
                     fillMode: VideoOutput.PreserveAspectCrop
+                    visible: !connecting
                   }
 
-                  Text {
+                  Rectangle {
+                    visible: connecting
                     anchors.centerIn: parent
-                    visible: player.mediaStatus === MediaPlayer.Loading || player.mediaStatus === MediaPlayer.NoMedia
-                    text: "Connecting…"
-                    color: Qt.darker(root.barForeground, 1.6)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.caption
+                    implicitWidth: connectingLabel.implicitWidth + Style.space(12)
+                    implicitHeight: connectingLabel.implicitHeight + Style.space(6)
+                    radius: Style.space(4)
+                    color: "#99000000"
+
+                    Text {
+                      id: connectingLabel
+                      anchors.centerIn: parent
+                      text: "Connecting…"
+                      color: "#ffffff"
+                      font.family: Style.font.family
+                      font.pixelSize: Style.font.caption
+                    }
                   }
 
                   Text {

@@ -40,6 +40,12 @@ function previewUrl(camera) {
     return rtspUrl(camera, camera.previewStream || "stream2");
 }
 
+// Filesystem-safe id for a camera's cached thumbnail filename. Keyed on IP
+// rather than name so a rename doesn't orphan/duplicate the cached frame.
+function cacheId(camera) {
+    return (camera.ip || camera.name || "camera").replace(/[^A-Za-z0-9_.-]/g, "_");
+}
+
 // Every camera, including hidden ones — the settings editor's source list.
 function parseCameras(jsonText) {
     var list = [];

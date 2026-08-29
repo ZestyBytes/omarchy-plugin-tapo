@@ -18,9 +18,10 @@ file.
 - Omarchy with plugin support (`omarchy plugin` commands)
 - Qt Multimedia with the FFmpeg backend (`qt6-multimedia` on Arch), used
   for the live preview
-- [`mpv`](https://mpv.io) and [`ffprobe`](https://ffmpeg.org) (part of
-  `ffmpeg`) — mpv plays the full stream on click, ffprobe powers the
-  settings screen's "Test" button and the offline-notification check
+- [`mpv`](https://mpv.io), [`ffprobe`](https://ffmpeg.org), and `ffmpeg`
+  itself (all three ship together) — mpv plays the full stream on click,
+  ffprobe powers the settings screen's "Test" button and the offline-
+  notification check, ffmpeg grabs the cached thumbnail frames (see below)
 - `curl` and `openssl` (both near-universal on Arch already) — used by the
   bundled `onvif-ptz.sh` for pan/tilt control; the pan/tilt arrows on the
   `mpv` stream view also need mpv's bundled Lua scripting support, which
@@ -136,6 +137,14 @@ the panel is open. Every 60s, each visible camera's RTSP stream is
 checked; a desktop notification fires only on an actual state *change*
 (went offline, or came back online) — never repeatedly for a camera that's
 simply always unreachable, and never on the first check of a session.
+
+**Thumbnail cache** — that same 60s background check also grabs a still
+frame from each online camera (`ffmpeg`, one JPEG frame) and caches it at
+`~/.cache/omarchy/tapo-cameras/thumbnails/`. The grid preview shows this
+cached frame as a backdrop while its live stream is (re)connecting, instead
+of a flash of plain black — including right when the panel is first
+opened, since the cache is already warm from the background poller by
+then, panel open or not.
 
 ## Roadmap / ideas
 
