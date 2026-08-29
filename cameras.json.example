@@ -5,7 +5,8 @@
     "username": "camuser",
     "password": "campass",
     "port": 554,
-    "stream": "stream1"
+    "stream": "stream1",
+    "hidden": false
   },
   {
     "name": "Backyard",
@@ -13,6 +14,7 @@
     "username": "camuser",
     "password": "campass",
     "port": 554,
-    "stream": "stream1"
+    "stream": "stream1",
+    "hidden": false
   }
 ]

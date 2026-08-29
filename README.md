@@ -1,20 +1,28 @@
 # Tapo Cameras — Omarchy Plugin
 
 An [Omarchy](https://omarchy.org) plugin that adds a bar icon for quickly
-viewing your TP-Link Tapo cameras. Click the icon to see your camera list,
-click a camera to open its live RTSP stream in `mpv`.
+viewing your TP-Link Tapo cameras. Click the icon to see a live preview of
+each camera; click a preview to open its full RTSP stream in `mpv`, tiled
+into your workspace.
 
-This is a `bar-widget` plugin: a bar icon (`BarWidget.qml`) that opens a
-floating panel (`Panel.qml`) listing the cameras from your config file.
+This is a `bar-widget` plugin: a single QML entry point (`Panel.qml`) that
+renders both the bar icon and its floating popup, with two views — the
+camera list, and a settings screen (the cog icon) for adding, editing,
+hiding, removing, and testing cameras without ever hand-editing a config
+file.
 
 ## Requirements
 
 - Omarchy with plugin support (`omarchy plugin` commands)
-- [`mpv`](https://mpv.io) installed, used to play the RTSP stream
-- Tapo cameras with RTSP enabled and a **camera account** configured
-  (Tapo app → your camera → Advanced Settings → Camera Account). This is
-  separate from your TP-Link cloud login — RTSP auth uses these
-  credentials, not your cloud account.
+- Qt Multimedia with the FFmpeg backend (`qt6-multimedia` on Arch), used
+  for the live preview
+- [`mpv`](https://mpv.io) and [`ffprobe`](https://ffmpeg.org) (part of
+  `ffmpeg`) — mpv plays the full stream on click, ffprobe powers the
+  settings screen's "Test" button
+- Tapo cameras with RTSP enabled and a **camera account** configured (see
+  below) — most plugged-in Tapo cameras (C1xx/C2xx/C3xx series) support
+  this; battery-powered doorbells and battery cameras generally don't, since
+  they stream through TP-Link's cloud only and have no local RTSP option
 
 ## Install
 
@@ -27,59 +35,59 @@ Or manually:
 ```sh
 git clone https://github.com/ZestyBytes/omarchy-plugin-tapo \
   ~/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras
+omarchy plugin enable io.github.zestybytes.tapo-cameras
 ```
 
-Then validate it (if you're developing/editing locally):
+## Set up your cameras
 
-```sh
-omarchy plugin validate ~/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras
-```
+Everything happens from the bar — no config file editing required:
 
-## Configure your cameras
+1. Click the camera icon in the bar.
+2. Click the cog icon (top right of the panel) to open **Camera Settings**.
+3. Click **+ Add camera** and fill in:
+   - **Name** — whatever you want it labeled as
+   - **IP address** and **port** (554 by default) — the camera's local
+     network IP; check your router's connected-devices list or the Tapo
+     app's device info screen
+   - **Username / password** — a **camera account**, created in the Tapo
+     app: open the camera → gear icon → Advanced Settings → Camera Account.
+     This is a separate login from your TP-Link cloud account, created
+     specifically for local RTSP/ONVIF access.
+   - **Stream** — `stream1` (HD) or `stream2` (SD, lower bandwidth)
+4. Click **Test** to confirm it connects.
+5. Click the back arrow — your camera now shows a live preview in the panel.
 
-Copy the example config and fill in your cameras' IPs and camera-account
-credentials:
+The eye icon toggles a camera hidden from the main view without deleting
+it; the trash icon removes it entirely.
 
-```sh
-cp ~/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras/cameras.json.example \
-   ~/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras/cameras.json
-```
+### Config file (optional, for bulk setup or scripting)
 
-`cameras.json`:
+Settings are stored at `~/.local/state/omarchy/tapo-cameras/cameras.json`
+(see `cameras.json.example` for the shape). This lives outside the plugin's
+own directory deliberately — Omarchy hot-reloads a plugin whenever a file
+under its plugin directory changes, so keeping per-user config there caused
+the whole widget to reload on every save.
 
-```json
-[
-  {
-    "name": "Front Door",
-    "ip": "192.168.1.50",
-    "username": "camuser",
-    "password": "campass",
-    "port": 554,
-    "stream": "stream1"
-  }
-]
-```
-
-- `stream1` = HD stream, `stream2` = SD stream (lower bandwidth).
-- The panel watches this file, so editing it live-reloads the camera list.
-- **This file holds camera credentials in plaintext.** It's already
-  git-ignored by this repo; keep its permissions locked down
-  (`chmod 600 cameras.json`) since anyone with read access to it gets RTSP
-  access to your cameras.
+- **This file holds camera credentials in plaintext.** The plugin creates
+  it with `600` permissions; keep it that way, since anyone with read
+  access to it gets RTSP access to your cameras.
+- Hand-edits aren't picked up live — they're read the next time you open
+  the panel.
 
 ## How it works
 
-- `BarWidget.qml` — bar icon, toggles the panel.
-- `Panel.qml` — floating panel, lists cameras from `cameras.json` and
-  launches `mpv` with a low-latency RTSP URL when one is clicked.
-- `CameraModel.js` — parses `cameras.json` and builds the
+- `Panel.qml` — the whole plugin: bar icon, the camera-list popup (live
+  video via Qt Multimedia, click to open the full stream in `mpv`), and the
+  settings popup (add/edit/hide/remove/test, all reading and writing
+  `cameras.json`).
+- `CameraModel.js` — parses/serializes `cameras.json` and builds the
   `rtsp://user:pass@ip:port/streamN` URL for each camera.
 
 ## Roadmap / ideas
 
-- Live thumbnail snapshots instead of a plain list
 - PTZ controls (pan/tilt/zoom) for supported models
 - Multi-camera grid view in one panel
+- ONVIF discovery to help find cameras' IPs automatically
 
 ## License
 

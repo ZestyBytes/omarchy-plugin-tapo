@@ -1,16 +1,23 @@
 .pragma library
 
-// Reads the user's camera list from ~/.config/omarchy/plugins/<id>/cameras.json
-// and builds RTSP stream URLs for each camera.
+// Reads/writes the user's camera list at
+// ~/.config/omarchy/plugins/<id>/cameras.json.
 //
 // cameras.json format (see cameras.json.example):
 // [
-//   { "name": "Front Door", "ip": "192.168.1.50", "username": "camuser", "password": "campass", "port": 554, "stream": "stream1" }
+//   { "name": "Front Door", "ip": "192.168.1.50", "username": "camuser",
+//     "password": "campass", "port": 554, "stream": "stream1", "hidden": false }
 // ]
 //
-// "username"/"password" are the *camera account* credentials you set in the
-// Tapo app under Advanced Settings -> Camera Account (NOT your TP-Link
-// cloud login). "stream" is "stream1" (HD) or "stream2" (SD).
+// "username"/"password" are the *camera account* credentials set in the
+// Tapo app under Advanced Settings -> Camera Account (NOT the TP-Link cloud
+// login). "stream" is "stream1" (HD) or "stream2" (SD). "hidden" lets a
+// camera stay configured but be tucked out of the main list.
+//
+// This file is edited two ways: by hand (bulk setup, scripting) and from
+// the panel's settings view (Panel.qml), which round-trips through
+// parseCameras -> in-memory edits -> serializeCameras -> FileView.setText.
+// Both paths go through the same shape here so they never drift.
 
 function rtspUrl(camera) {
     var port = camera.port || 554;
@@ -20,24 +27,56 @@ function rtspUrl(camera) {
     return "rtsp://" + user + ":" + pass + "@" + camera.ip + ":" + port + "/" + stream;
 }
 
+// Every camera, including hidden ones — the settings editor's source list.
 function parseCameras(jsonText) {
     var list = [];
     try {
-        list = JSON.parse(jsonText);
+        list = jsonText && jsonText.trim() !== "" ? JSON.parse(jsonText) : [];
     } catch (e) {
         console.warn("[tapo-cameras] failed to parse cameras.json:", e);
         return [];
     }
     if (!Array.isArray(list)) return [];
     return list.map(function (cam) {
-        return {
-            name: cam.name || cam.ip,
-            ip: cam.ip,
+        var out = {
+            name: cam.name || cam.ip || "",
+            ip: cam.ip || "",
             username: cam.username || "",
             password: cam.password || "",
             port: cam.port || 554,
             stream: cam.stream || "stream1",
-            url: rtspUrl(cam)
+            hidden: cam.hidden === true
         };
+        out.url = rtspUrl(out);
+        return out;
     });
+}
+
+// The subset actually worth keeping when a new blank row hasn't been
+// filled in yet (an add-camera stub with nothing typed).
+function isBlank(camera) {
+    return !camera.name && !camera.ip && !camera.username && !camera.password;
+}
+
+// Drops the computed `url` and any fully-blank stub rows, then formats for
+// disk. Field order kept stable so diffs / hand-edits stay readable.
+function serializeCameras(cameras) {
+    var cleaned = cameras
+        .filter(function (cam) { return !isBlank(cam); })
+        .map(function (cam) {
+            return {
+                name: cam.name || "",
+                ip: cam.ip || "",
+                username: cam.username || "",
+                password: cam.password || "",
+                port: cam.port || 554,
+                stream: cam.stream || "stream1",
+                hidden: cam.hidden === true
+            };
+        });
+    return JSON.stringify(cleaned, null, 2) + "\n";
+}
+
+function blankCamera() {
+    return { name: "", ip: "", username: "", password: "", port: 554, stream: "stream1", hidden: false, url: "" };
 }

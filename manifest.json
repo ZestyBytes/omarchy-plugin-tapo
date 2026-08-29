@@ -8,7 +8,7 @@
   "description": "Quickly view and access your TP-Link Tapo cameras from the bar",
   "kinds": ["bar-widget"],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Tapo Cameras",
