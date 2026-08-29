@@ -192,7 +192,7 @@ Panel {
     // populated camera/settings list doesn't carry padding meant for those.
     // Both lists still sit in a Flickable as a safety net against
     // undershooting.
-    contentHeight: Math.min(Style.space(560),
+    contentHeight: Math.min(Style.space(640),
       Style.space(70) +
       (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
       (!root.settingsMode && root.visibleCameras.length === 0 ? Style.space(56) : 0) +
@@ -305,108 +305,98 @@ Panel {
         Repeater {
           model: root.settingsMode ? [] : root.visibleCameras
 
-          // Name overlaid on the video rather than a separate row above it:
-          // one self-contained item per cell with one fixed height, instead
-          // of a stacked row + video whose combined height depended on
-          // text metrics. A reactive height there needs a layout pass to
-          // settle, but the popup window snapshots its size once when it
-          // opens (see the settingsRow comment below) — the previous
-          // stacked version undersized the window, cutting off the top of
-          // the name row until you scrolled.
-          delegate: Rectangle {
+          delegate: ColumnLayout {
             id: cameraDelegate
             Layout.fillWidth: true
-            implicitHeight: root.gridColumns > 1 ? Style.space(120) : Style.space(160)
-            radius: Style.space(8)
-            clip: true
-            color: Qt.darker(root.barForeground, 10)
-            border.color: previewMouse.containsMouse ? root.barForeground : "transparent"
-            border.width: Style.space(1)
-
-            // Decoding only happens while this camera is actually on
-            // screen: the Loader tears the player down when the panel
-            // closes or settings mode is opened, instead of leaving RTSP
-            // connections and decoders running in the background.
-            Loader {
-              anchors.fill: parent
-              active: root.opened && !root.settingsMode
-
-              sourceComponent: Item {
-                anchors.fill: parent
-
-                MediaPlayer {
-                  id: player
-                  source: modelData.url
-                  autoPlay: true
-                  loops: MediaPlayer.Infinite
-                  videoOutput: videoOutput
-                }
-
-                VideoOutput {
-                  id: videoOutput
-                  anchors.fill: parent
-                  fillMode: VideoOutput.PreserveAspectCrop
-                }
-
-                Text {
-                  anchors.centerIn: parent
-                  visible: player.mediaStatus === MediaPlayer.Loading || player.mediaStatus === MediaPlayer.NoMedia
-                  text: "Connecting…"
-                  color: Qt.darker(root.barForeground, 1.6)
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-
-                Text {
-                  anchors.centerIn: parent
-                  visible: player.error !== MediaPlayer.NoError
-                  text: "Preview unavailable"
-                  color: Qt.darker(root.barForeground, 1.6)
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                }
-              }
-            }
-
-            // Name/IP label strip, overlaid on top of the video.
-            Rectangle {
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.top: parent.top
-              height: Style.space(22)
-              color: "#000000"
-              opacity: 0.55
-            }
+            spacing: Style.space(4)
+            // Fixed, not derived from the name/ip row's text-metrics-based
+            // implicitHeight: that needs a layout pass to settle, but the
+            // popup window snapshots its size once when it opens (see the
+            // settingsRow comment below) — a reactive height here caused
+            // the same "have to scroll to see everything" undersizing.
+            implicitHeight: (root.gridColumns > 1 ? Style.space(120) : Style.space(160)) + Style.space(40)
 
             RowLayout {
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.top: parent.top
-              anchors.margins: Style.space(6)
+              Layout.fillWidth: true
               spacing: Style.space(6)
 
               Text {
                 text: modelData.name
-                color: "#ffffff"
+                color: root.barForeground
                 font.family: Style.font.family
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.body
                 Layout.fillWidth: true
                 elide: Text.ElideRight
               }
 
               Text {
                 text: modelData.ip
-                color: "#cccccc"
+                color: Qt.darker(root.barForeground, 1.6)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
             }
 
-            MouseArea {
-              id: previewMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              onClicked: root.openStream(modelData)
+            Rectangle {
+              Layout.fillWidth: true
+              implicitHeight: root.gridColumns > 1 ? Style.space(120) : Style.space(160)
+              radius: Style.space(8)
+              clip: true
+              color: Qt.darker(root.barForeground, 10)
+              border.color: previewMouse.containsMouse ? root.barForeground : "transparent"
+              border.width: Style.space(1)
+
+              // Decoding only happens while this camera is actually on
+              // screen: the Loader tears the player down when the panel
+              // closes or settings mode is opened, instead of leaving RTSP
+              // connections and decoders running in the background.
+              Loader {
+                anchors.fill: parent
+                active: root.opened && !root.settingsMode
+
+                sourceComponent: Item {
+                  anchors.fill: parent
+
+                  MediaPlayer {
+                    id: player
+                    source: modelData.url
+                    autoPlay: true
+                    loops: MediaPlayer.Infinite
+                    videoOutput: videoOutput
+                  }
+
+                  VideoOutput {
+                    id: videoOutput
+                    anchors.fill: parent
+                    fillMode: VideoOutput.PreserveAspectCrop
+                  }
+
+                  Text {
+                    anchors.centerIn: parent
+                    visible: player.mediaStatus === MediaPlayer.Loading || player.mediaStatus === MediaPlayer.NoMedia
+                    text: "Connecting…"
+                    color: Qt.darker(root.barForeground, 1.6)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  Text {
+                    anchors.centerIn: parent
+                    visible: player.error !== MediaPlayer.NoError
+                    text: "Preview unavailable"
+                    color: Qt.darker(root.barForeground, 1.6)
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+              }
+
+              MouseArea {
+                id: previewMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: root.openStream(modelData)
+              }
             }
           }
         }
