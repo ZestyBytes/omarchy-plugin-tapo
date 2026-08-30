@@ -40,6 +40,39 @@ Panel {
   readonly property string configPath: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/cameras.json"
   readonly property string legacyConfigPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras/cameras.json"
 
+  // Global (all-camera) notification categories, kept separate from
+  // cameras.json since they're not per-camera state — cameras.json is a
+  // plain array (see CameraModel.js), not an object with room for extra
+  // keys. Both default on so existing users keep getting notified unless
+  // they turn one off.
+  readonly property string prefsPath: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/prefs.json"
+  property bool notifyConnectivity: true
+  property bool notifyDetection: true
+
+  function savePrefs() {
+    prefsFile.setText(JSON.stringify({
+      notifyConnectivity: root.notifyConnectivity,
+      notifyDetection: root.notifyDetection
+    }, null, 2))
+    prefsFile.waitForJob()
+  }
+
+  FileView {
+    id: prefsFile
+    path: root.prefsPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var prefs = JSON.parse(text())
+        root.notifyConnectivity = prefs.notifyConnectivity !== false
+        root.notifyDetection = prefs.notifyDetection !== false
+      } catch (e) { /* first run: no prefs yet */ }
+    }
+    onLoadFailed: {}
+  }
+
   // A still frame per camera, refreshed by the offline-check poller below
   // (piggybacked on its existing 60s/always-running cadence rather than a
   // separate timer) and shown as a backdrop under the live preview while
@@ -142,6 +175,18 @@ Panel {
   }
 
   function settingsRowsTotalHeight() {
+    // Repeater delegate creation is deferred a tick behind a model change,
+    // so right after addCamera() the new row's itemAt() is still null and
+    // settingsRowHeight falls back to collapsedRowHeight for it. Reading
+    // settingsRepeater.count here (even though its value isn't otherwise
+    // used) registers this binding as a listener on that count — a real
+    // notifying QML property — so once the delegate actually exists and
+    // count ticks over, this re-evaluates and picks up the real (expanded)
+    // height. Without this read, the binding's only recorded dependency
+    // from that first pass is itemAt(idx) returning null, which never
+    // fires again, so the fallback height sticks forever and the row
+    // below (the "+ Add camera" button) overlaps the still-expanded row.
+    var _liveDependency = settingsRepeater.count
     if (root.cameras.length === 0) return 0
     var total = 0
     for (var i = 0; i < root.cameras.length; i++) total += settingsRowHeight(i)
@@ -209,6 +254,7 @@ Panel {
     checkMpvProc.running = true
     checkFfprobeProc.running = true
     checkPython3Proc.running = true
+    prefsFile.reload()
   }
 
   // -------------------------------------------- offline/online notifications
@@ -261,12 +307,13 @@ Panel {
     var previous = root.cameraOnlineState[camera.name]
     root.cameraOnlineState[camera.name] = isOnline
     if (previous === undefined || previous === isOnline) return
+    if (!root.notifyConnectivity) return
     if (isOnline) {
       Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
-        "-u", "low", camera.name + " is back online"])
+        "-g", root.cameraGlyph, "-u", "low", camera.name + " is back online"])
     } else {
       Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
-        "-u", "normal", camera.name + " is offline", "Couldn't reach its RTSP stream."])
+        "-g", root.cameraGlyph, "-u", "normal", camera.name + " is offline", "Couldn't reach its RTSP stream."])
     }
   }
 
@@ -361,8 +408,9 @@ Panel {
     var now = Date.now()
     if (root.detectionCooldownUntil[key] && now < root.detectionCooldownUntil[key]) return
     root.detectionCooldownUntil[key] = now + root.detectionCooldownMs
+    if (!root.notifyDetection) return
     Quickshell.execDetached(["omarchy-notification-send", "--app-name", "Tapo Cameras",
-      "-u", "normal", label + " detected on " + camera.name])
+      "-g", root.cameraGlyph, "-u", "normal", label + " detected on " + camera.name])
   }
 
   Repeater {
@@ -494,6 +542,10 @@ Panel {
   // directory, same convention as legacyConfigPath above. Used to locate
   // onvif-ptz.sh and onvif-ptz-osc.lua, passed into mpv above.
   readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras"
+  // Same glyph as the bar icon below, so a Tapo notification shows the
+  // actual camera icon in the tray instead of falling back to a plain
+  // initial-letter avatar.
+  readonly property string cameraGlyph: "" // fa-video
 
   BarIconButton {
     id: button
@@ -889,6 +941,74 @@ Panel {
           id: settingsColumn
           width: parent.width
           spacing: Style.space(10)
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 0
+
+              Text {
+                text: "Connectivity alerts"
+                color: root.barForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+              Text {
+                text: "Notify when a camera goes offline or comes back online"
+                color: Qt.darker(root.barForeground, 1.5)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption * 0.85
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+              }
+            }
+
+            ToggleSwitch {
+              checked: root.notifyConnectivity
+              foreground: root.barForeground
+              onToggled: {
+                root.notifyConnectivity = !root.notifyConnectivity
+                root.savePrefs()
+              }
+            }
+          }
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 0
+
+              Text {
+                text: "Motion & detection alerts"
+                color: root.barForeground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+              Text {
+                text: "Notify on motion, person, pet, or vehicle detection"
+                color: Qt.darker(root.barForeground, 1.5)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption * 0.85
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+              }
+            }
+
+            ToggleSwitch {
+              checked: root.notifyDetection
+              foreground: root.barForeground
+              onToggled: {
+                root.notifyDetection = !root.notifyDetection
+                root.savePrefs()
+              }
+            }
+          }
 
           Text {
             visible: root.showSettingsHelp
