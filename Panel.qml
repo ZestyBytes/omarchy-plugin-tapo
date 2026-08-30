@@ -37,7 +37,8 @@ Panel {
   // saving settings from inside cameras.json living next to the QML files
   // used to retrigger a full reload of this widget on every edit. Old
   // installs get migrated on first load (see migrateLegacyConfig below).
-  readonly property string configPath: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/cameras.json"
+  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras"
+  readonly property string configPath: root.stateDir + "/cameras.json"
   readonly property string legacyConfigPath: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.zestybytes.tapo-cameras/cameras.json"
 
   // Global (all-camera) notification categories, kept separate from
@@ -84,14 +85,17 @@ Panel {
   // have no separate flag for RTSP credentials — the URL itself has to be
   // one of their own arguments, which would otherwise sit in plain sight in
   // /proc/<pid>/cmdline (world-readable) for as long as that process runs.
-  // Writing the URL to a small file here instead (via FileView, which
-  // writes it with 0600 permissions, same as cameras.json) and pointing the
-  // process at *that* file — ffmpeg's `-f concat` demuxer, or mpv's
-  // `--playlist` — keeps the credential out of every one of those
-  // processes' own argv. Each file is named after the camera + purpose so
+  // Writing the URL to a small file inside our explicitly 0700 state
+  // directory and pointing the process at *that* file — ffmpeg's `-f
+  // concat` demuxer, or mpv's `--playlist` — keeps the credential out of
+  // every one of those processes' own argv and hidden from other local
+  // users. FileView itself does not constrain file modes. Each file is
+  // removed by run-with-cleanup.sh when its consumer exits, and is named
+  // after the camera + purpose so
   // concurrent operations on different cameras (or different streams of the
   // same camera) never clobber each other.
-  readonly property string streamTmpDir: Quickshell.env("HOME") + "/.local/state/omarchy/tapo-cameras/tmp"
+  readonly property string streamTmpDir: root.stateDir + "/tmp"
+  property bool stateDirsReady: false
   function streamTmpPath(camera, purpose) {
     return root.streamTmpDir + "/" + CameraModel.cacheId(camera) + "-" + purpose
   }
@@ -109,6 +113,10 @@ Panel {
     tmpWriterFile.path = path
     tmpWriterFile.setText(url + "\n")
     tmpWriterFile.waitForJob()
+  }
+
+  function withStreamFileCleanup(path, command) {
+    return [root.pluginDir + "/run-with-cleanup.sh", path].concat(command)
   }
 
   FileView {
@@ -248,13 +256,11 @@ Panel {
 
   Component.onCompleted: {
     tileRuleProc.running = true
-    migrateProc.running = true
     mkdirThumbnailDirProc.running = true
-    mkdirStreamTmpDirProc.running = true
+    secureStateDirsProc.running = true
     checkMpvProc.running = true
     checkFfprobeProc.running = true
     checkPython3Proc.running = true
-    prefsFile.reload()
   }
 
   // -------------------------------------------- offline/online notifications
@@ -272,7 +278,7 @@ Panel {
   Timer {
     id: offlineCheckTimer
     interval: 60000
-    running: true
+    running: root.stateDirsReady
     repeat: true
     triggeredOnStart: true
     onTriggered: root.startOfflineCheckRound()
@@ -296,10 +302,10 @@ Panel {
     // end against real hardware. "rtp" has to be in the whitelist too: RTSP
     // over TCP still uses the rtp pseudo-protocol internally for the media
     // stream itself, which concat's whitelist blocks without it.
-    offlineCheckProc.command = ["timeout", "8", "ffprobe",
+    offlineCheckProc.command = root.withStreamFileCleanup(probePath, ["timeout", "8", "ffprobe",
       "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
       "-v", "error",
-      "-show_entries", "stream=codec_name", "-of", "csv=p=0", probePath]
+      "-show_entries", "stream=codec_name", "-of", "csv=p=0", probePath])
     offlineCheckProc.running = true
   }
 
@@ -330,10 +336,11 @@ Panel {
     root.writeConcatFile(previewPath, CameraModel.previewUrl(camera))
     // No -rtsp_transport, "rtp" in the whitelist: see runNextOfflineCheck's
     // comment above, same fix, verified against real hardware.
-    Quickshell.execDetached(["timeout", "8", "ffmpeg", "-y", "-loglevel", "error",
+    Quickshell.execDetached(root.withStreamFileCleanup(previewPath,
+      ["timeout", "8", "ffmpeg", "-y", "-loglevel", "error",
       "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
       "-i", previewPath,
-      "-frames:v", "1", "-q:v", "5", root.thumbnailPath(camera)])
+      "-frames:v", "1", "-q:v", "5", root.thumbnailPath(camera)]))
   }
 
   Process {
@@ -443,9 +450,8 @@ Panel {
   Process {
     id: migrateProc
     command: ["sh", "-c",
-      "mkdir -p \"$(dirname '" + root.configPath + "')\" && " +
-      "[ -f '" + root.configPath + "' ] || [ ! -f '" + root.legacyConfigPath + "' ] || " +
-      "(cp '" + root.legacyConfigPath + "' '" + root.configPath + "' && rm '" + root.legacyConfigPath + "')"]
+      "[ -f \"$1\" ] || [ ! -f \"$2\" ] || (cp \"$2\" \"$1\" && rm \"$2\")",
+      "tapo-migrate-config", root.configPath, root.legacyConfigPath]
     onExited: configFile.reload()
   }
 
@@ -455,8 +461,16 @@ Panel {
   }
 
   Process {
-    id: mkdirStreamTmpDirProc
-    command: ["mkdir", "-p", root.streamTmpDir]
+    id: secureStateDirsProc
+    command: ["sh", "-c",
+      "mkdir -p -m 700 \"$1\" \"$2\" && chmod 700 \"$1\" \"$2\" && find \"$2\" -maxdepth 1 -type f -delete",
+      "tapo-secure-state", root.stateDir, root.streamTmpDir]
+    onExited: function (exitCode) {
+      if (exitCode !== 0) return
+      root.stateDirsReady = true
+      migrateProc.running = true
+      prefsFile.reload()
+    }
   }
 
   // Settings persistence owns writes; external hand-edits are picked up on
@@ -535,7 +549,8 @@ Panel {
     var playlistPath = root.streamTmpPath(camera, "open.playlist")
     root.writePlaylistFile(playlistPath, CameraModel.rtspUrl(camera))
     args.push("--playlist=" + playlistPath)
-    Quickshell.execDetached(env ? { command: args, environment: env } : args)
+    var cleanupArgs = root.withStreamFileCleanup(playlistPath, args)
+    Quickshell.execDetached(env ? { command: cleanupArgs, environment: env } : cleanupArgs)
   }
 
   // Bundled alongside Panel.qml — path matches this plugin's own install
@@ -1107,10 +1122,10 @@ Panel {
                 root.writeConcatFile(testPath, CameraModel.rtspUrl(settingsRow.modelData))
                 // No -rtsp_transport, "rtp" in the whitelist: see
                 // runNextOfflineCheck's comment, same fix, same reason.
-                testProc.command = ["timeout", "6", "ffprobe",
+                testProc.command = root.withStreamFileCleanup(testPath, ["timeout", "6", "ffprobe",
                   "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtp,tcp,udp",
                   "-v", "error", "-show_entries", "stream=codec_name",
-                  "-of", "csv=p=0", testPath]
+                  "-of", "csv=p=0", testPath])
                 testProc.running = true
               }
 

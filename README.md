@@ -93,8 +93,10 @@ under its plugin directory changes, so keeping per-user config there caused
 the whole widget to reload on every save.
 
 - **This file holds camera credentials in plaintext.** The plugin creates
-  it with `600` permissions; keep it that way, since anyone with read
-  access to it gets RTSP access to your cameras.
+  its containing state directory with `700` permissions and reapplies that
+  mode on startup, so other local users cannot traverse the directory to
+  read it. Keep the directory private, since anyone with read access to the
+  file gets RTSP access to your cameras.
 - Hand-edits aren't picked up live — they're read the next time you open
   the panel.
 
