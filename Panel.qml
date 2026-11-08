@@ -131,7 +131,11 @@ Panel {
   implicitHeight: button.implicitHeight
 
   function reload() { configFile.reload() }
-  function persist() { configFile.setText(CameraModel.serializeCameras(root.cameras)) }
+  function persist() {
+    configFile.setText(CameraModel.serializeCameras(root.cameras))
+    configFile.waitForJob()
+    chmodConfigProc.running = true  // holds camera passwords: owner-only
+  }
   function scheduleSave() { saveTimer.restart() }
 
   // Per-keystroke edits mutate root.cameras[index] directly by index (not
@@ -456,6 +460,11 @@ Panel {
   }
 
   Process {
+    id: chmodConfigProc
+    command: ["chmod", "600", root.configPath]
+  }
+
+  Process {
     id: mkdirThumbnailDirProc
     command: ["mkdir", "-p", root.thumbnailDir]
   }
@@ -463,8 +472,8 @@ Panel {
   Process {
     id: secureStateDirsProc
     command: ["sh", "-c",
-      "mkdir -p -m 700 \"$1\" \"$2\" && chmod 700 \"$1\" \"$2\" && find \"$2\" -maxdepth 1 -type f -delete",
-      "tapo-secure-state", root.stateDir, root.streamTmpDir]
+      "mkdir -p -m 700 \"$1\" \"$2\" && chmod 700 \"$1\" \"$2\" && find \"$2\" -maxdepth 1 -type f -delete && { [ ! -f \"$3\" ] || chmod 600 \"$3\"; }",
+      "tapo-secure-state", root.stateDir, root.streamTmpDir, root.configPath]
     onExited: function (exitCode) {
       if (exitCode !== 0) return
       root.stateDirsReady = true
@@ -594,8 +603,10 @@ Panel {
       : Style.space(70) +
         (root.mpvAvailable && root.ffprobeAvailable ? 0 : Style.space(30)) +
         (root.visibleCameras.length === 0 ? Style.space(56) : 0) +
+        // The "+ Add your first camera" button (34) plus its layout gap (10)
+        (root.cameras.length === 0 ? Style.space(44) : 0) +
         cameraColumn.implicitHeight +
-        (root.visibleCameras.length > 0 ? Style.space(24) : 0) // breathing room under the last row
+        Style.space(24) // breathing room under the last row / empty-state button
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -622,6 +633,14 @@ Panel {
           Layout.fillWidth: true
         }
 
+
+        PanelActionButton {
+          visible: root.settingsMode
+          iconText: "\uf067" // fa-plus
+          tooltipText: "Add camera"
+          foreground: Color.popups.text
+          onClicked: root.addCamera()
+        }
 
         PanelActionButton {
           visible: root.settingsMode
