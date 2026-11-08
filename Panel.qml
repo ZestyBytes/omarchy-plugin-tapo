@@ -615,7 +615,7 @@ Panel {
 
         Text {
           text: root.settingsMode ? "Camera Settings" : "Tapo Cameras"
-          color: root.barForeground
+          color: Color.popups.text
           font.family: Style.font.family
           font.pixelSize: Style.font.body
           font.bold: true
@@ -627,14 +627,14 @@ Panel {
           visible: root.settingsMode
           iconText: "" // fa-info-circle
           tooltipText: "About camera accounts"
-          foreground: root.showSettingsHelp ? (root.bar ? root.bar.urgent : Color.urgent) : root.barForeground
+          foreground: root.showSettingsHelp ? (root.bar ? root.bar.urgent : Color.urgent) : Color.popups.text
           onClicked: root.showSettingsHelp = !root.showSettingsHelp
         }
 
         PanelActionButton {
           iconText: root.settingsMode ? "" : "" // fa-arrow-left : fa-cog
           tooltipText: root.settingsMode ? "Back" : "Camera settings"
-          foreground: root.barForeground
+          foreground: Color.popups.text
           onClicked: root.settingsMode = !root.settingsMode
         }
       }
@@ -663,7 +663,7 @@ Panel {
         text: root.cameras.length === 0
           ? "No cameras added yet."
           : "All cameras are hidden. Open settings to show one."
-        color: Qt.darker(root.barForeground, 1.4)
+        color: Qt.darker(Color.popups.text, 1.4)
         font.family: Style.font.family
         font.pixelSize: Style.font.caption
         wrapMode: Text.WordWrap
@@ -675,14 +675,14 @@ Panel {
         Layout.fillWidth: true
         implicitHeight: Style.space(34)
         radius: Style.space(6)
-        color: addFirstMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
-        border.color: root.barForeground
+        color: addFirstMouse.containsMouse ? Qt.darker(Color.popups.text, 6) : "transparent"
+        border.color: Color.popups.text
         border.width: Style.space(1)
 
         Text {
           anchors.centerIn: parent
           text: "+ Add your first camera"
-          color: root.barForeground
+          color: Color.popups.text
           font.family: Style.font.family
           font.pixelSize: Style.font.caption
         }
@@ -747,7 +747,7 @@ Panel {
 
               Text {
                 text: modelData.name
-                color: root.barForeground
+                color: Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.font.body
                 Layout.fillWidth: true
@@ -756,7 +756,7 @@ Panel {
 
               Text {
                 text: modelData.ip
-                color: Qt.darker(root.barForeground, 1.6)
+                color: Qt.darker(Color.popups.text, 1.6)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
@@ -768,8 +768,8 @@ Panel {
               implicitHeight: root.gridColumns > 1 ? Style.space(120) : Style.space(160)
               radius: Style.space(8)
               clip: true
-              color: Qt.darker(root.barForeground, 10)
-              border.color: previewMouse.containsMouse ? root.barForeground : "transparent"
+              color: Qt.darker(Color.popups.text, 10)
+              border.color: previewMouse.containsMouse ? Color.popups.text : "transparent"
               border.width: Style.space(1)
 
               // Last-known frame, refreshed roughly every 60s by the
@@ -916,7 +916,7 @@ Panel {
                     anchors.centerIn: parent
                     visible: player.error !== MediaPlayer.NoError
                     text: "Preview unavailable"
-                    color: Qt.darker(root.barForeground, 1.6)
+                    color: Qt.darker(Color.popups.text, 1.6)
                     font.family: Style.font.family
                     font.pixelSize: Style.font.caption
                   }
@@ -967,13 +967,13 @@ Panel {
 
               Text {
                 text: "Connectivity alerts"
-                color: root.barForeground
+                color: Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
               Text {
                 text: "Notify when a camera goes offline or comes back online"
-                color: Qt.darker(root.barForeground, 1.5)
+                color: Qt.darker(Color.popups.text, 1.5)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption * 0.85
                 wrapMode: Text.WordWrap
@@ -983,7 +983,7 @@ Panel {
 
             ToggleSwitch {
               checked: root.notifyConnectivity
-              foreground: root.barForeground
+              foreground: Color.popups.text
               onToggled: {
                 root.notifyConnectivity = !root.notifyConnectivity
                 root.savePrefs()
@@ -1001,13 +1001,13 @@ Panel {
 
               Text {
                 text: "Motion & detection alerts"
-                color: root.barForeground
+                color: Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
               Text {
                 text: "Notify on motion, person, pet, or vehicle detection"
-                color: Qt.darker(root.barForeground, 1.5)
+                color: Qt.darker(Color.popups.text, 1.5)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption * 0.85
                 wrapMode: Text.WordWrap
@@ -1017,7 +1017,7 @@ Panel {
 
             ToggleSwitch {
               checked: root.notifyDetection
-              foreground: root.barForeground
+              foreground: Color.popups.text
               onToggled: {
                 root.notifyDetection = !root.notifyDetection
                 root.savePrefs()
@@ -1028,7 +1028,7 @@ Panel {
           Text {
             visible: root.showSettingsHelp
             text: "Camera account credentials come from the Tapo app: open the camera, tap the gear icon, then Advanced Settings → Camera Account. That's a separate login from your TP-Link cloud account — create one there if you haven't."
-            color: Qt.darker(root.barForeground, 1.4)
+            color: Qt.darker(Color.popups.text, 1.4)
             font.family: Style.font.family
             font.pixelSize: Style.font.caption
             wrapMode: Text.WordWrap
@@ -1094,7 +1094,7 @@ Panel {
               implicitHeight: Style.space(48) + (expanded ? Style.space(300) : 0)
               clip: true
               radius: Style.space(8)
-              color: Qt.darker(root.barForeground, 10)
+              color: Qt.darker(Color.popups.text, 10)
 
               // A freshly-added blank row starts expanded, since it has
               // nothing to show collapsed; existing cameras start collapsed
@@ -1162,12 +1162,12 @@ Panel {
                     implicitWidth: Style.space(22)
                     implicitHeight: Style.space(22)
                     radius: Style.space(6)
-                    color: dragArea.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+                    color: dragArea.containsMouse ? Qt.darker(Color.popups.text, 6) : "transparent"
 
                     Text {
                       anchors.centerIn: parent
                       text: "" // fa-bars (drag handle)
-                      color: Qt.darker(root.barForeground, 1.3)
+                      color: Qt.darker(Color.popups.text, 1.3)
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                     }
@@ -1193,7 +1193,7 @@ Panel {
                     Layout.fillWidth: true
                     implicitHeight: Style.space(26)
                     radius: Style.space(6)
-                    color: headerMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+                    color: headerMouse.containsMouse ? Qt.darker(Color.popups.text, 6) : "transparent"
 
                     RowLayout {
                       anchors.fill: parent
@@ -1202,7 +1202,7 @@ Panel {
 
                       Text {
                         text: settingsRow.expanded ? "" : "" // fa-chevron-down : fa-chevron-right
-                        color: Qt.darker(root.barForeground, 1.4)
+                        color: Qt.darker(Color.popups.text, 1.4)
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
                         Layout.fillHeight: true
@@ -1213,7 +1213,7 @@ Panel {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         text: settingsRow.currentName || "(unnamed camera)"
-                        color: root.barForeground
+                        color: Color.popups.text
                         font.family: Style.font.family
                         font.pixelSize: Style.font.body
                         elide: Text.ElideRight
@@ -1234,12 +1234,12 @@ Panel {
                     implicitWidth: Style.space(26)
                     implicitHeight: Style.space(26)
                     radius: Style.space(6)
-                    color: eyeMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
+                    color: eyeMouse.containsMouse ? Qt.darker(Color.popups.text, 6) : "transparent"
 
                     Text {
                       anchors.centerIn: parent
                       text: settingsRow.modelData.hidden ? "" : "" // fa-eye-slash : fa-eye
-                      color: root.barForeground
+                      color: Color.popups.text
                       font.family: Style.font.family
                       font.pixelSize: Style.font.icon
                     }
@@ -1276,7 +1276,7 @@ Panel {
                     Text {
                       anchors.centerIn: parent
                       text: settingsRow.confirmingDelete ? "Confirm?" : ""
-                      color: settingsRow.confirmingDelete ? "#ffffff" : (trashMouse.containsMouse ? (root.bar ? root.bar.urgent : Color.urgent) : root.barForeground)
+                      color: settingsRow.confirmingDelete ? "#ffffff" : (trashMouse.containsMouse ? (root.bar ? root.bar.urgent : Color.urgent) : Color.popups.text)
                       font.family: Style.font.family
                       font.pixelSize: settingsRow.confirmingDelete ? Style.font.caption : Style.font.icon
                     }
@@ -1374,7 +1374,7 @@ Panel {
 
                     Text {
                       text: "Stream"
-                      color: Qt.darker(root.barForeground, 1.4)
+                      color: Qt.darker(Color.popups.text, 1.4)
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                     }
@@ -1388,7 +1388,7 @@ Panel {
 
                     Text {
                       text: "Preview"
-                      color: Qt.darker(root.barForeground, 1.4)
+                      color: Qt.darker(Color.popups.text, 1.4)
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                     }
@@ -1409,15 +1409,15 @@ Panel {
                       implicitWidth: Style.space(18)
                       implicitHeight: Style.space(18)
                       radius: Style.space(4)
-                      color: settingsRow.currentPtz ? root.barForeground : "transparent"
-                      border.color: root.barForeground
+                      color: settingsRow.currentPtz ? Color.popups.text : "transparent"
+                      border.color: Color.popups.text
                       border.width: Style.space(1)
 
                       Text {
                         anchors.centerIn: parent
                         visible: settingsRow.currentPtz
                         text: "\uf00c" // fa-check
-                        color: Qt.darker(root.barForeground, 10)
+                        color: Qt.darker(Color.popups.text, 10)
                         font.family: Style.font.family
                         font.pixelSize: Style.space(10)
                       }
@@ -1435,7 +1435,7 @@ Panel {
 
                     Text {
                       text: "Pan/tilt"
-                      color: Qt.darker(root.barForeground, 1.4)
+                      color: Qt.darker(Color.popups.text, 1.4)
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                     }
@@ -1452,7 +1452,7 @@ Panel {
                       text: settingsRow.testState === "testing" ? "Testing…" : settingsRow.testMessage
                       color: settingsRow.testState === "ok" ? "#8bc34a"
                         : settingsRow.testState === "fail" ? (root.bar ? root.bar.urgent : Color.urgent)
-                        : Qt.darker(root.barForeground, 1.6)
+                        : Qt.darker(Color.popups.text, 1.6)
                       font.family: Style.font.family
                       font.pixelSize: Style.font.caption
                       elide: Text.ElideRight
@@ -1461,7 +1461,7 @@ Panel {
                     PanelActionButton {
                       iconText: "Test"
                       tooltipText: "Test RTSP connection"
-                      foreground: root.barForeground
+                      foreground: Color.popups.text
                       bordered: true
                       implicitWidth: Style.space(56)
                       onClicked: settingsRow.runTest()
@@ -1477,14 +1477,14 @@ Panel {
             Layout.fillWidth: true
             implicitHeight: Style.space(34)
             radius: Style.space(6)
-            color: addMouse.containsMouse ? Qt.darker(root.barForeground, 6) : "transparent"
-            border.color: root.barForeground
+            color: addMouse.containsMouse ? Qt.darker(Color.popups.text, 6) : "transparent"
+            border.color: Color.popups.text
             border.width: Style.space(1)
 
             Text {
               anchors.centerIn: parent
               text: "+ Add camera"
-              color: root.barForeground
+              color: Color.popups.text
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
             }
